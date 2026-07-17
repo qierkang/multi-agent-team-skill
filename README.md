@@ -25,16 +25,15 @@
 
 </div>
 
-<div align="center">
-[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.0-informational.svg?style=for-the-badge)](CHANGELOG.md)
-[![Status](https://img.shields.io/badge/status-稳定可用-success.svg?style=for-the-badge)](#项目状态)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?style=for-the-badge&logo=python&logoColor=white)](scripts/)
-[![Routes](https://img.shields.io/badge/routes-new_%7C_existing--project_%7C_existing--team-6F42C1.svg?style=for-the-badge)](#工作流总览)
-[![Templates](https://img.shields.io/badge/templates-8_roles-orange.svg?style=for-the-badge)](#角色与模型策略)
-[![Compatible](https://img.shields.io/badge/Compatible-Codex_%7C_Claude_Code_%7C_Cursor-blue.svg?style=for-the-badge)](#快速开始)
-
-</div>
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.0-informational.svg?style=for-the-badge" alt="Version" /></a>
+  <a href="#项目状态"><img src="https://img.shields.io/badge/status-稳定可用-success.svg?style=for-the-badge" alt="Status" /></a>
+  <a href="scripts/"><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python" /></a>
+  <a href="#工作流总览"><img src="https://img.shields.io/badge/routes-new_%7C_existing--project_%7C_existing--team-6F42C1.svg?style=for-the-badge" alt="Routes" /></a>
+  <a href="#角色与模型策略"><img src="https://img.shields.io/badge/templates-8_roles-orange.svg?style=for-the-badge" alt="Templates" /></a>
+  <a href="#快速开始"><img src="https://img.shields.io/badge/Compatible-Codex_%7C_Claude_Code_%7C_Cursor-blue.svg?style=for-the-badge" alt="Compatible" /></a>
+</p>
 
 ---
 
