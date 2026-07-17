@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "project_slug": "multi-agent-team-skill",
+  "generated_at": "2026-07-17T00:00:00+00:00",
+  "note": "所有正式视觉资产均由 image_gen 生成。README 引用的本地图片必须先登记在本清单，并由 scripts/verify_assets.sh 校验。",
+  "required": [
+    {
+      "image_type": "social-preview",
+      "locale": "neutral",
+      "path": "assets/social-preview.png",
+      "prompt_file": "assets/prompts/social-preview.md",
+      "generated_at": "2026-07-17T00:00:00+00:00",
+      "generated_by": "image_gen"
+    },
+    {
+      "image_type": "workflow-overview",
+      "locale": "zh-CN",
+      "path": "assets/architecture/zh-CN/team-orchestration-overview.png",
+      "prompt_file": "assets/prompts/team-orchestration-overview-zh-CN.md",
+      "generated_at": "2026-07-17T00:00:00+00:00",
+      "generated_by": "image_gen"
+    },
+    {
+      "image_type": "safe-upgrade-flow",
+      "locale": "zh-CN",
+      "path": "assets/architecture/zh-CN/safe-existing-skill-upgrade.png",
+      "prompt_file": "assets/prompts/safe-existing-skill-upgrade-zh-CN.md",
+      "generated_at": "2026-07-17T00:00:00+00:00",
+      "generated_by": "image_gen"
+    },
+    {
+      "image_type": "workflow-overview",
+      "locale": "en",
+      "path": "assets/architecture/en/team-orchestration-overview.png",
+      "prompt_file": "assets/prompts/team-orchestration-overview-en.md",
+      "generated_at": "2026-07-17T00:00:00+00:00",
+      "generated_by": "image_gen"
+    },
+    {
+      "image_type": "safe-upgrade-flow",
+      "locale": "en",
+      "path": "assets/architecture/en/safe-existing-skill-upgrade.png",
+      "prompt_file": "assets/prompts/safe-existing-skill-upgrade-en.md",
+      "generated_at": "2026-07-17T00:00:00+00:00",
+      "generated_by": "image_gen"
+    }
+  ],
+  "extra": []
+}

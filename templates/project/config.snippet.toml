@@ -1,0 +1,8 @@
+# multi-agent-team 生成配置的基础片段。角色声明由 role-catalog.json 按档案生成。
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 6
+max_depth = 1
+job_max_runtime_seconds = 1800

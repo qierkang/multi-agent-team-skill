@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "skill_name": "multi-agent-team",
+  "skill_version": "0.2.0",
+  "defaults": {
+    "max_threads": 6,
+    "max_depth": 1,
+    "job_max_runtime_seconds": 1800,
+    "max_concurrent_writers": 2
+  },
+  "model_tiers": {
+    "fast": "gpt-5.6-luna",
+    "standard": "gpt-5.6-terra",
+    "advanced": "gpt-5.6-sol"
+  },
+  "profiles": {
+    "core": [
+      "explorer",
+      "chore",
+      "implementer",
+      "debugger",
+      "architect",
+      "reviewer"
+    ],
+    "web": [
+      "explorer",
+      "chore",
+      "implementer",
+      "debugger",
+      "architect",
+      "reviewer",
+      "e2e-tester"
+    ],
+    "ai-data": [
+      "explorer",
+      "chore",
+      "implementer",
+      "debugger",
+      "architect",
+      "reviewer",
+      "evidence-researcher"
+    ],
+    "full": [
+      "explorer",
+      "chore",
+      "implementer",
+      "debugger",
+      "architect",
+      "reviewer",
+      "e2e-tester",
+      "evidence-researcher"
+    ]
+  },
+  "roles": {
+    "explorer": {
+      "description": "只读探索代码入口、调用链、边界与文件所有权",
+      "config_file": "agents/explorer.toml",
+      "tier": "fast"
+    },
+    "chore": {
+      "description": "执行机械性、低风险、边界清晰的整理任务",
+      "config_file": "agents/chore.toml",
+      "tier": "fast"
+    },
+    "implementer": {
+      "description": "在明确任务包和文件所有权内实现常规功能与测试",
+      "config_file": "agents/implementer.toml",
+      "tier": "standard"
+    },
+    "debugger": {
+      "description": "复现故障、定位根因并实施最小修复",
+      "config_file": "agents/debugger.toml",
+      "tier": "standard"
+    },
+    "architect": {
+      "description": "只读处理架构、迁移、疑难决策与失败升级复盘",
+      "config_file": "agents/architect.toml",
+      "tier": "advanced"
+    },
+    "reviewer": {
+      "description": "使用干净上下文独立审查正确性、安全、回归和测试缺口",
+      "config_file": "agents/reviewer.toml",
+      "tier": "advanced"
+    },
+    "e2e-tester": {
+      "description": "执行浏览器端到端验证、交互回归和证据留存",
+      "config_file": "agents/e2e-tester.toml",
+      "tier": "standard"
+    },
+    "evidence-researcher": {
+      "description": "只读核验API、公开数据、供应商文档和证据链",
+      "config_file": "agents/evidence-researcher.toml",
+      "tier": "standard"
+    }
+  }
+}

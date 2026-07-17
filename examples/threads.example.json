@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-07-17T00:00:00Z",
+  "threads": [
+    {
+      "id": "demo-frontend",
+      "title": "前端实现",
+      "status": "in_progress",
+      "summary": "已完成页面主体，等待端到端验证。",
+      "evidence_paths": ["docs/协作/证据/demo-frontend.md"],
+      "owned_paths": ["src/pages/example.tsx"],
+      "attempts": 1,
+      "needs_user_input": false
+    },
+    {
+      "id": "demo-reviewer",
+      "title": "长期代码审查",
+      "status": "completed",
+      "summary": "上一轮审查已完成。",
+      "evidence_paths": ["docs/协作/证据/demo-reviewer.md"],
+      "owned_paths": [],
+      "attempts": 1,
+      "needs_user_input": false
+    }
+  ]
+}
+

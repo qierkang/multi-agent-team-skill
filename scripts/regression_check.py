@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Run the complete new and existing environment regression suites."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SUITES = (
+    ("new", ROOT / "scripts" / "regression_new_environment.py", "STATE=new_environment_regression_passed"),
+    (
+        "existing",
+        ROOT / "scripts" / "regression_existing_environment.py",
+        "STATE=existing_environment_regression_passed",
+    ),
+)
+
+
+def main() -> int:
+    states: dict[str, str] = {}
+    for name, script, expected_state in SUITES:
+        result = subprocess.run(
+            ["python3", str(script)], text=True, capture_output=True, check=False
+        )
+        print(f"===== {name} environment =====")
+        print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="")
+        if result.returncode != 0 or expected_state not in result.stdout:
+            print(f"STATE=regression_failed; suite={name}; exit={result.returncode}")
+            return 1
+        states[name] = "passed"
+    print(f"STATE=regression_passed; new={states['new']}; existing={states['existing']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

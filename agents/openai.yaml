@@ -1,0 +1,4 @@
+interface:
+  display_name: "多智能体研发团队编排"
+  short_description: "为新项目或已有项目检查、部署、审计并验证一次性多智能体研发团队"
+  default_prompt: "使用 $multi-agent-team 检查当前项目并按正确路由初始化或审计团队。"
