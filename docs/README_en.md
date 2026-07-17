@@ -170,7 +170,15 @@ The design follows Harness Engineering principles: source-of-truth templates, ex
 
 ## Star History
 
-Star history is intentionally added only after the public repository exists; this package does not fabricate repository links or star counts.
+<p align="center">
+  <a href="https://github.com/qierkang/multi-agent-team-skill"><img src="https://img.shields.io/github/stars/qierkang/multi-agent-team-skill?style=for-the-badge&logo=github&label=GitHub%20Stars" alt="GitHub Stars" /></a>
+</p>
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=qierkang%2Fmulti-agent-team-skill&type=date">View the real growth trend on Star History</a>
+</p>
+
+The star count is returned live by GitHub, and the trend link targets this public repository without fabricated links or data.
 
 ## License
 

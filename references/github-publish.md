@@ -8,7 +8,7 @@
 2. 运行 `bash scripts/verify_assets.sh .`，确认 Social Preview 小于 1 MiB、图片不缺失且 README 不断链。
 3. 检查无 `.env`、密钥、令牌、本机绝对路径、`__pycache__`、`.DS_Store` 和测试临时目录。
 4. 确认 `LICENSE`、`CONTRIBUTING.md`、`CHANGELOG.md`、`SECURITY.md`、`CODE_OF_CONDUCT.md`、Issue 模板与 CI 均存在。
-5. 首次推送前不要伪造 Star History 链接、CI 徽章或不存在的演示数据。
+5. 首次推送后删除 README 发布占位说明；嵌入 Star History 图片前必须验证接口返回成功，接口不可用时使用 GitHub 实时 Star 徽章和真实趋势链接，禁止断图或伪造数据。
 
 ## 推荐 GitHub About
 

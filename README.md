@@ -374,9 +374,17 @@ bash scripts/verify_assets.sh .
 
 本 Skill 采用 Harness Engineering 的实践：模板成为真源、运行状态外置、审查保持干净上下文，并以确定性验证替代口头完成声明。
 
-## Star History
+## Star 历史
 
-首次公开仓库创建并推送后，再添加真实的 Star History 图表；在此之前不伪造仓库链接或星标数据。发布步骤见 [GitHub 发布清单](./references/github-publish.md)。
+<p align="center">
+  <a href="https://github.com/qierkang/multi-agent-team-skill"><img src="https://img.shields.io/github/stars/qierkang/multi-agent-team-skill?style=for-the-badge&logo=github&label=GitHub%20Stars" alt="GitHub Stars" /></a>
+</p>
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=qierkang%2Fmulti-agent-team-skill&type=date">在 Star History 查看真实增长趋势</a>
+</p>
+
+Star 数量由 GitHub 实时返回；趋势入口指向当前公开仓库，不使用伪造仓库链接或星标数据。
 
 ## 许可证
 
