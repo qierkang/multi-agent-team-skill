@@ -4,6 +4,7 @@
 
 ```json
 {
+  "schema_version": "2.0",
   "captured_at": "2026-07-17T00:00:00Z",
   "threads": [
     {
@@ -20,7 +21,6 @@
 }
 ```
 
-推荐状态：`pending`、`in_progress`、`completed`、`blocked`、`needs_input`、`unknown`。
+运行时注册表推荐状态：`provisioning`、`active`、`waiting_input`、`reviewing`、`degraded`、`completed`、`blocked`、`cancelled`、`archived`。审计器仍兼容 v1 `tasks` 与旧状态名，但只读兼容不等于已迁移。
 
 缺少快照时，脚本仍可审计文件系统配置，但报告必须标记“运行时状态未核验”，不能推断任务已完成或失联。
-

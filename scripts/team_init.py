@@ -20,6 +20,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runtime_state import (
+    DEFAULT_MODEL_TIERS,
+    MANAGED_STATE_FILES,
+    SCHEMA_VERSION,
+    SKILL_VERSION,
+    normalize_model_tiers,
+    state_defaults,
+)
+
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = SKILL_ROOT / "templates"
@@ -36,11 +45,37 @@ DOC_TEMPLATES = {
     "docs/协作/任务包模板.md": "任务包.template.md",
     "docs/协作/摘要模板.md": "摘要.template.md",
     "docs/协作/状态快照.json": "状态快照.template.json",
+    "docs/协作/长期线程注册表.md": "长期线程注册表.template.md",
+    "docs/协作/异常记录.md": "异常记录.template.md",
 }
 
 
 class InstallError(RuntimeError):
     pass
+
+
+# 模板默认模型 ID -> 档位键，用于把角色模板替换为用户提供的模型 ID。
+PLACEHOLDER_TO_TIER = {
+    DEFAULT_MODEL_TIERS["fast"]: "fast",
+    DEFAULT_MODEL_TIERS["standard"]: "standard",
+    DEFAULT_MODEL_TIERS["advanced"]: "advanced",
+}
+MODEL_LINE_RE = re.compile(r'^(\s*model\s*=\s*)"([^"]*)"(.*)$')
+
+
+def apply_model_tiers(toml_text: str, model_tiers: dict[str, str]) -> str:
+    """把角色 TOML 的默认 model 替换为对应档位的配置模型 ID。"""
+
+    def repl(match: re.Match[str]) -> str:
+        prefix, current, suffix = match.group(1), match.group(2), match.group(3)
+        tier = PLACEHOLDER_TO_TIER.get(current)
+        if tier is None:
+            return match.group(0)
+        return f"{prefix}{json.dumps(model_tiers[tier], ensure_ascii=False)}{suffix}"
+
+    return "\n".join(
+        MODEL_LINE_RE.sub(repl, line) for line in toml_text.split("\n")
+    )
 
 
 def load_catalog() -> dict[str, Any]:
@@ -152,12 +187,14 @@ def validate_managed_paths(root: Path, roles: list[str]) -> None:
         root / ".codex" / "config.toml",
         root / ".codex" / "agents",
         root / ".codex" / "team-bootstrap.json",
+        root / ".codex" / "team",
         root / ".codex" / "backups",
         root / "AGENTS.md",
         root / "docs",
         root / "docs" / "协作",
     ]
     managed.extend(root / ".codex" / "agents" / f"{role}.toml" for role in roles)
+    managed.extend(root / relative for relative in MANAGED_STATE_FILES)
     managed.extend(root / relative for relative in DOC_TEMPLATES)
     for target in managed:
         ensure_safe_target(root, target)
@@ -301,6 +338,25 @@ def build_agents_text(root: Path) -> tuple[str, str]:
     return current.rstrip() + "\n\n" + fragment + "\n", "APPEND"
 
 
+def existing_doc_conflicts(root: Path) -> list[str]:
+    """Reject same-name runtime documents that cannot be safely adopted."""
+    snapshot = root / "docs/协作/状态快照.json"
+    if not snapshot.exists():
+        return []
+    try:
+        payload = json.loads(snapshot.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"docs/协作/状态快照.json 无法安全接管: {exc}"]
+    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
+        return ["docs/协作/状态快照.json 不是 schema 2.0"]
+    threads = payload.get("threads")
+    if not isinstance(threads, list):
+        return ["docs/协作/状态快照.json 缺少 threads 数组"]
+    if threads:
+        return ["docs/协作/状态快照.json 已含任务，不能作为新团队空注册表接管"]
+    return []
+
+
 def atomic_write(path: Path, content: str) -> None:
     previous_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -363,6 +419,10 @@ def backup_existing(root: Path, paths: list[Path]) -> Path | None:
         return None
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_root = root / ".codex" / "backups" / "multi-agent-team" / stamp
+    suffix = 1
+    while backup_root.exists():
+        backup_root = root / ".codex" / "backups" / "multi-agent-team" / f"{stamp}-{suffix}"
+        suffix += 1
     ensure_safe_target(root, backup_root)
     for path in existing:
         relative = path.relative_to(root)
@@ -383,11 +443,16 @@ def print_plan(
     conflicts: list[str],
     ignored: list[str],
     backup_plan: str | None,
+    model_tiers: dict[str, str],
 ) -> None:
     print("===== multi-agent-team install plan =====")
     print(f"PROJECT={root}")
     print(f"PROFILE={profile}")
     print(f"ROLES={','.join(roles)}")
+    for tier in ("fast", "standard", "advanced"):
+        model = model_tiers[tier]
+        flag = " (Codex 默认；订阅不支持时用 --model-* 覆盖)" if model == DEFAULT_MODEL_TIERS[tier] else ""
+        print(f"MODEL: {tier}={model}{flag}")
     for item in evidence:
         print(f"DETECTION: {item}")
     for item in actions:
@@ -404,15 +469,34 @@ def print_plan(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="安装项目级一次性多智能体团队模板")
+    parser = argparse.ArgumentParser(description="安装项目级受控多智能体团队")
     parser.add_argument("--project", required=True, help="目标项目根目录")
     parser.add_argument("--profile", choices=["auto", "core", "web", "ai-data", "full"], default="auto")
     parser.add_argument("--apply", action="store_true", help="执行写入；默认仅 dry-run")
     parser.add_argument("--replace-conflicts", action="store_true", help="显式替换已存在的冲突配置")
     parser.add_argument("--allow-ignored", action="store_true", help="显式允许写入被 .gitignore 忽略的受管路径")
+    parser.add_argument(
+        "--thread-mode",
+        choices=["recommend", "controlled-auto"],
+        default="recommend",
+        help="长期任务创建模式；默认只推荐，显式开启后主任务可受控自动创建",
+    )
+    parser.add_argument("--model-fast", help="fast 档真实模型 ID（explorer/chore）")
+    parser.add_argument("--model-standard", help="standard 档真实模型 ID（implementer/debugger 等）")
+    parser.add_argument("--model-advanced", help="advanced 档真实模型 ID（architect/reviewer）")
     args = parser.parse_args()
 
+    model_overrides = {
+        tier: value
+        for tier, value in (
+            ("fast", args.model_fast),
+            ("standard", args.model_standard),
+            ("advanced", args.model_advanced),
+        )
+        if value
+    }
     try:
+        model_tiers = normalize_model_tiers(model_overrides)
         root = find_project_root(args.project)
         catalog = load_catalog()
         validate_managed_paths(root, [])
@@ -424,16 +508,19 @@ def main() -> int:
             key for key, value in agent_section.items() if isinstance(value, dict)
         ) if isinstance(agent_section, dict) else []
         existing_roles = sorted((root / ".codex" / "agents").glob("*.toml"))
+        existing_state = [root / relative for relative in MANAGED_STATE_FILES if (root / relative).exists()]
         existing_manifest = (root / ".codex" / "team-bootstrap.json").exists()
         agents_path = root / "AGENTS.md"
         agents_text = agents_path.read_text(encoding="utf-8", errors="ignore") if agents_path.is_file() else ""
         existing_marker = next((marker for marker in TEAM_MARKERS if marker in agents_text), None)
-        if existing_roles or configured_roles or existing_manifest or existing_marker:
+        if existing_roles or existing_state or configured_roles or existing_manifest or existing_marker:
             print("检测到已有团队配置，请使用 $multi-agent-team 审计模式生成迁移方案:")
             for path in existing_roles:
                 print(f"  - {path.relative_to(root)}")
             for role in configured_roles:
                 print(f"  - .codex/config.toml [agents.{role}]")
+            for path in existing_state:
+                print(f"  - {path.relative_to(root)}")
             if existing_manifest:
                 print("  - .codex/team-bootstrap.json")
             if existing_marker:
@@ -454,6 +541,7 @@ def main() -> int:
             catalog,
             args.replace_conflicts,
         )
+        conflicts.extend(existing_doc_conflicts(root))
         agents_text, agents_action = build_agents_text(root)
 
         manifest_path = root / ".codex" / "team-bootstrap.json"
@@ -462,6 +550,7 @@ def main() -> int:
             ".codex/team-bootstrap.json",
             "AGENTS.md",
             *(f".codex/agents/{role}.toml" for role in roles),
+            *(str(path) for path in MANAGED_STATE_FILES),
             *DOC_TEMPLATES,
         ]
         if config_path.exists() or (root / "AGENTS.md").exists():
@@ -472,6 +561,7 @@ def main() -> int:
             f"{agents_action} AGENTS.md",
         ]
         actions.extend(f"ADD .codex/agents/{role}.toml" for role in roles)
+        actions.extend(f"ADD {path}" for path in MANAGED_STATE_FILES)
         for relative in DOC_TEMPLATES:
             actions.append(f"{'KEEP' if (root / relative).exists() else 'ADD'} {relative}")
         actions.append("ADD .codex/team-bootstrap.json")
@@ -489,6 +579,7 @@ def main() -> int:
             conflicts,
             ignored,
             backup_plan,
+            model_tiers,
         )
 
         blocked = bool(conflicts) or (bool(ignored) and not args.allow_ignored)
@@ -498,7 +589,6 @@ def main() -> int:
             return 2 if blocked else 0
         if blocked:
             raise InstallError("存在配置冲突或 ignored 路径，未执行写入")
-
         backup_root = backup_existing(root, [config_path, root / "AGENTS.md"])
         if backup_root:
             print(f"BACKUP={backup_root}")
@@ -509,7 +599,9 @@ def main() -> int:
         }
         for role in roles:
             source = TEMPLATES / "agents" / f"{role}.toml"
-            writes[root / ".codex" / "agents" / f"{role}.toml"] = source.read_text(encoding="utf-8")
+            writes[root / ".codex" / "agents" / f"{role}.toml"] = apply_model_tiers(
+                source.read_text(encoding="utf-8"), model_tiers
+            )
 
         for relative, template_name in DOC_TEMPLATES.items():
             destination = root / relative
@@ -517,15 +609,24 @@ def main() -> int:
                 source = TEMPLATES / "project" / "docs" / template_name
                 writes[destination] = source.read_text(encoding="utf-8")
 
+        for relative, payload in state_defaults(args.thread_mode, model_tiers).items():
+            writes[root / relative] = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
         manifest = {
-            "schema_version": "1.0",
+            "schema_version": SCHEMA_VERSION,
             "skill": "multi-agent-team",
-            "skill_version": catalog["skill_version"],
+            "skill_version": SKILL_VERSION,
             "installed_at": datetime.now(timezone.utc).isoformat(),
             "project_root": ".",
             "profile": profile,
             "roles": roles,
             "defaults": catalog["defaults"],
+            "orchestration": {
+                "thread_creation_mode": args.thread_mode,
+                "registry": str(MANAGED_STATE_FILES[1]),
+                "control_plane": "main-task-only",
+                "runtime_adapter": "codex-client-thread-tools",
+            },
             "runtime_smoke_test": "pending",
         }
         writes[manifest_path] = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"

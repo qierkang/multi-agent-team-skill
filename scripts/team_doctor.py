@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static validation for a project managed by multi-agent-team."""
+"""Fail-closed static validator for a multi-agent-team v2 installation."""
 
 from __future__ import annotations
 
@@ -11,55 +11,56 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from runtime_state import (
+    BUDGET_STATE,
+    DEFAULT_MODEL_TIERS,
+    MANAGED_STATE_FILES,
+    OWNERSHIP_LOCKS,
+    PROJECT_STATE,
+    SCHEMA_VERSION,
+    SKILL_VERSION,
+    THREAD_REGISTRY,
+    active_threads,
+    load_json,
+    normalize_model_tiers,
+    safe_state_path,
+)
+from team_init import apply_model_tiers
+from thread_orchestrator import derived_runtime_state, ownership_conflicts
 
+
+ROOT = Path(__file__).resolve().parents[1]
+CATALOG = json.loads((ROOT / "templates/role-catalog.json").read_text(encoding="utf-8"))
+CANONICAL_ROLES = ROOT / "templates/agents"
 AGENTS_START = "<!-- multi-agent-team:start -->"
 AGENTS_END = "<!-- multi-agent-team:end -->"
-SKILL_ROOT = Path(__file__).resolve().parents[1]
-CANONICAL_ROLES = SKILL_ROOT / "templates" / "agents"
 CONTROL_AGENT_KEYS = {"max_threads", "max_depth", "job_max_runtime_seconds"}
 REQUIRED_DOCS = [
     "docs/协作/任务台账.md",
     "docs/协作/任务包模板.md",
     "docs/协作/摘要模板.md",
     "docs/协作/状态快照.json",
+    "docs/协作/长期线程注册表.md",
+    "docs/协作/异常记录.md",
 ]
-READ_ONLY_ROLES = {"explorer", "architect", "reviewer", "evidence-researcher"}
-WRITE_ROLES = {"chore", "implementer", "debugger", "e2e-tester"}
-EXPECTED_MODELS = {
-    "explorer": "gpt-5.6-luna",
-    "chore": "gpt-5.6-luna",
-    "implementer": "gpt-5.6-terra",
-    "debugger": "gpt-5.6-terra",
-    "architect": "gpt-5.6-sol",
-    "reviewer": "gpt-5.6-sol",
-    "e2e-tester": "gpt-5.6-terra",
-    "evidence-researcher": "gpt-5.6-terra",
-}
+ACTIVE_STATES = {"provisioning", "active", "waiting_input", "reviewing", "degraded"}
+ALL_STATES = ACTIVE_STATES | {"completed", "blocked", "cancelled", "archived"}
 
 
-def read_toml(path: Path) -> dict[str, Any]:
-    try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise ValueError(f"{path}: {exc}") from exc
-
-
-def check(condition: bool, label: str, failures: list[str]) -> None:
-    if condition:
-        print(f"OK {label}")
-    else:
-        print(f"FAIL {label}")
+def check(ok: bool, label: str, failures: list[str]) -> None:
+    print(f"{'OK' if ok else 'FAIL'} {label}")
+    if not ok:
         failures.append(label)
 
 
 def contains_symlink(root: Path, target: Path) -> bool:
     try:
-        relative = target.relative_to(root)
+        parts = target.relative_to(root).parts
     except ValueError:
         return True
     current = root
-    for part in relative.parts:
-        current = current / part
+    for part in parts:
+        current /= part
         if current.is_symlink():
             return True
         if not current.exists():
@@ -67,52 +68,123 @@ def contains_symlink(root: Path, target: Path) -> bool:
     return False
 
 
-def git_repository_root(root: Path) -> Path | None:
+def read_toml(path: Path) -> dict[str, Any]:
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def git_root(root: Path) -> Path | None:
     result = subprocess.run(
         ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
+        text=True, capture_output=True, check=False,
     )
     if result.returncode == 0:
         return Path(result.stdout.strip()).resolve()
     if "not a git repository" in result.stderr.lower():
         return None
-    raise ValueError(f"Git 工作树识别失败: {result.stderr.strip() or result.returncode}")
+    raise ValueError(result.stderr.strip() or "git root lookup failed")
 
 
-def git_ignored(repo_root: Path, target: Path) -> bool:
-    try:
-        relative = target.relative_to(repo_root)
-    except ValueError as exc:
-        raise ValueError(f"受管路径不在 Git 工作树内: {target}") from exc
+def ignored(repo: Path, path: Path) -> bool:
+    relative = path.resolve(strict=False).relative_to(repo)
     result = subprocess.run(
-        ["git", "-C", str(repo_root), "check-ignore", "--quiet", "--", str(relative)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        check=False,
+        ["git", "-C", str(repo), "check-ignore", "--quiet", "--", str(relative)],
+        capture_output=True, check=False,
     )
     if result.returncode not in {0, 1}:
-        raise ValueError(f"Git ignore 检查失败: {result.stderr.decode().strip() or result.returncode}")
+        raise ValueError(result.stderr.decode().strip() or "git ignore check failed")
     return result.returncode == 0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="校验 multi-agent-team 静态安装结果")
-    parser.add_argument("--project", required=True, help="目标项目根目录")
-    args = parser.parse_args()
+def validate_runtime(root: Path, failures: list[str]) -> list[Path]:
+    paths = [safe_state_path(root, relative) for relative in MANAGED_STATE_FILES]
+    payloads: dict[Path, dict[str, Any]] = {}
+    for relative, path in zip(MANAGED_STATE_FILES, paths):
+        check(path.is_file(), f"{relative} exists", failures)
+        check(not contains_symlink(root, path), f"{relative} has no symlink", failures)
+        if path.is_file() and not contains_symlink(root, path):
+            try:
+                payloads[relative] = load_json(path)
+                check(payloads[relative].get("schema_version") == SCHEMA_VERSION, f"{relative} schema={SCHEMA_VERSION}", failures)
+            except ValueError as exc:
+                print(f"FAIL parse {relative}: {exc}")
+                failures.append(f"parse {relative}")
 
+    policy = payloads.get(PROJECT_STATE, {})
+    check(policy.get("skill_version") == SKILL_VERSION, "project state skill version", failures)
+    check(policy.get("thread_creation_mode") in {"recommend", "controlled-auto"}, "valid thread creation mode", failures)
+    check(policy.get("external_action_policy") == "explicit-user-approval", "external actions require approval", failures)
+    check(policy.get("creation_threshold") == 7 and policy.get("subagent_threshold") == 4, "routing thresholds", failures)
+    check(policy.get("max_active_long_threads") in range(1, 6), "long-thread limit 1..5", failures)
+    token = policy.get("token_policy", {})
+    check(
+        isinstance(token, dict)
+        and token.get("compact_at_ratio") == 0.7
+        and token.get("scope_freeze_at_ratio") == 0.85
+        and token.get("stop_at_ratio") == 1.0,
+        "token guardrails 70/85/100",
+        failures,
+    )
+
+    registry = payloads.get(THREAD_REGISTRY, {})
+    threads = registry.get("threads", [])
+    check(isinstance(registry.get("revision"), int), "registry revision", failures)
+    check(isinstance(threads, list), "registry threads array", failures)
+    if not isinstance(threads, list):
+        threads = []
+    ids = [item.get("id") for item in threads if isinstance(item, dict)]
+    check(len(ids) == len(threads) and all(isinstance(item, str) and item for item in ids), "thread ids present", failures)
+    check(len(ids) == len(set(ids)), "thread ids unique", failures)
+    active = active_threads({"threads": threads})
+    domains = [item.get("domain_key") for item in active]
+    check(all(item.get("status") in ALL_STATES for item in threads if isinstance(item, dict)), "thread statuses valid", failures)
+    check(len(domains) == len(set(domains)), "active domain keys unique", failures)
+    ownership = [path for item in active for path in item.get("owned_paths", [])]
+    check(len(ownership) == len(set(ownership)), "active path ownership unique", failures)
+    overlaps = [
+        conflict
+        for index, item in enumerate(active)
+        for conflict in ownership_conflicts({"owned_paths": item.get("owned_paths", [])}, active[index + 1 :])
+    ]
+    check(not overlaps, "active path ownership has no ancestor overlap", failures)
+    check(
+        sum(bool(item.get("owned_paths")) for item in active) <= int(policy.get("max_concurrent_writers", 2) or 0),
+        "active writer count within limit",
+        failures,
+    )
+    check(
+        all(item.get("status") != "completed" or item.get("evidence_paths") for item in threads if isinstance(item, dict)),
+        "completed threads contain evidence",
+        failures,
+    )
+    if THREAD_REGISTRY in payloads and OWNERSHIP_LOCKS in payloads and BUDGET_STATE in payloads:
+        expected_locks, expected_budget = derived_runtime_state(registry)
+        locks = payloads[OWNERSHIP_LOCKS]
+        budget = payloads[BUDGET_STATE]
+        check(locks.get("revision") == registry.get("revision") and locks.get("locks") == expected_locks["locks"], "ownership state matches registry", failures)
+        check(
+            budget.get("revision") == registry.get("revision")
+            and budget.get("threads") == expected_budget["threads"]
+            and budget.get("project_token_used") == expected_budget["project_token_used"],
+            "budget state matches registry",
+            failures,
+        )
+    return paths
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="校验 multi-agent-team v2 安装与状态结构")
+    parser.add_argument("--project", required=True)
+    args = parser.parse_args()
     root = Path(args.project).expanduser().resolve()
     failures: list[str] = []
-    manifest_path = root / ".codex" / "team-bootstrap.json"
-    config_path = root / ".codex" / "config.toml"
-
+    manifest_path = root / ".codex/team-bootstrap.json"
+    config_path = root / ".codex/config.toml"
+    agents_path = root / "AGENTS.md"
     check(root.is_dir(), "project directory exists", failures)
-    check(manifest_path.is_file(), ".codex/team-bootstrap.json exists", failures)
-    check(config_path.is_file(), ".codex/config.toml exists", failures)
-    check(not contains_symlink(root, manifest_path), ".codex/team-bootstrap.json has no symlink", failures)
-    check(not contains_symlink(root, config_path), ".codex/config.toml has no symlink", failures)
+    managed = [manifest_path, config_path, agents_path]
+    for path in managed:
+        check(path.is_file(), f"{path.relative_to(root)} exists", failures)
+        check(not contains_symlink(root, path), f"{path.relative_to(root)} has no symlink", failures)
     if failures:
         print("STATE=static_validation_failed")
         return 1
@@ -120,121 +192,83 @@ def main() -> int:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         config = read_toml(config_path)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
         print(f"FAIL parse configuration: {exc}")
         print("STATE=static_validation_failed")
         return 1
-
     check(manifest.get("skill") == "multi-agent-team", "manifest skill=multi-agent-team", failures)
+    check(manifest.get("schema_version") == SCHEMA_VERSION, f"manifest schema={SCHEMA_VERSION}", failures)
+    check(manifest.get("skill_version") == SKILL_VERSION, f"manifest skill version={SKILL_VERSION}", failures)
+    check(manifest.get("orchestration", {}).get("control_plane") == "main-task-only", "main task is control plane", failures)
 
     features = config.get("features", {})
     agents = config.get("agents", {})
     check(features.get("multi_agent") is True, "features.multi_agent=true", failures)
     check(agents.get("max_depth") == 1, "agents.max_depth=1", failures)
-    max_threads = agents.get("max_threads")
-    check(isinstance(max_threads, int) and 1 <= max_threads <= 6, "1<=agents.max_threads<=6", failures)
-    check(
-        agents.get("job_max_runtime_seconds") == manifest.get("defaults", {}).get("job_max_runtime_seconds"),
-        "job runtime matches manifest",
-        failures,
-    )
-
+    check(isinstance(agents.get("max_threads"), int) and 1 <= agents["max_threads"] <= 6, "1<=agents.max_threads<=6", failures)
     roles = manifest.get("roles", [])
-    check(isinstance(roles, list) and bool(roles), "manifest contains roles", failures)
-    if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles):
-        roles = []
-    check(len(roles) == len(set(roles)), "manifest roles are unique", failures)
-
-    config_roles = {
-        key
-        for key, value in agents.items()
-        if key not in CONTROL_AGENT_KEYS and isinstance(value, dict)
-    } if isinstance(agents, dict) else set()
-    role_dir = root / ".codex" / "agents"
-    role_paths = sorted(role_dir.glob("*.toml")) if role_dir.is_dir() else []
-    file_roles = {path.stem for path in role_paths}
-    manifest_roles = set(roles)
-    check(config_roles == manifest_roles, "config role set matches manifest", failures)
-    check(file_roles == manifest_roles, "role file set matches manifest", failures)
-    for role_path in role_paths:
-        check(not contains_symlink(root, role_path), f".codex/agents/{role_path.name} has no symlink", failures)
-
+    check(isinstance(roles, list) and len(roles) == len(set(roles)) and bool(roles), "manifest roles valid", failures)
+    roles = roles if isinstance(roles, list) else []
+    config_roles = {key for key, value in agents.items() if key not in CONTROL_AGENT_KEYS and isinstance(value, dict)}
+    role_paths = sorted((root / ".codex/agents").glob("*.toml"))
+    check(config_roles == set(roles), "config role set matches manifest", failures)
+    check({path.stem for path in role_paths} == set(roles), "role file set matches manifest", failures)
+    # 允许安装时覆盖默认模型档位；校验以项目 project-state 的 model_tiers 为准，
+    # 角色 TOML 除 model 行外仍必须与已安装模板逐字节一致（防篡改）。
+    project_state = load_json(safe_state_path(root, PROJECT_STATE)) if (root / PROJECT_STATE).exists() else {}
+    project_tiers = normalize_model_tiers(project_state.get("model_tiers"))
     for role in roles:
-        section = agents.get(role, {}) if isinstance(agents, dict) else {}
-        config_file = section.get("config_file") if isinstance(section, dict) else None
-        expected_relative = f"agents/{role}.toml"
-        check(config_file == expected_relative, f"agents.{role}.config_file", failures)
-        role_path = root / ".codex" / expected_relative
-        check(role_path.is_file(), f".codex/{expected_relative} exists", failures)
-        role_is_safe = not contains_symlink(root, role_path)
-        check(role_is_safe, f".codex/{expected_relative} has no symlink", failures)
-        if not role_path.is_file() or not role_is_safe:
-            continue
-        try:
-            role_config = read_toml(role_path)
-        except ValueError as exc:
-            print(f"FAIL parse role {role}: {exc}")
-            failures.append(f"parse role {role}")
-            continue
-        check(role_config.get("name") == role, f"{role}.name", failures)
-        check(bool(role_config.get("description")), f"{role}.description", failures)
-        check(bool(role_config.get("developer_instructions")), f"{role}.developer_instructions", failures)
-        expected_sandbox = "read-only" if role in READ_ONLY_ROLES else "workspace-write"
-        if role not in READ_ONLY_ROLES | WRITE_ROLES:
-            expected_sandbox = role_config.get("sandbox_mode")
-        check(role_config.get("sandbox_mode") == expected_sandbox, f"{role}.sandbox_mode={expected_sandbox}", failures)
-        check(
-            role_config.get("model") == EXPECTED_MODELS.get(role),
-            f"{role}.model={EXPECTED_MODELS.get(role)}",
-            failures,
-        )
-        check(
-            role_config.get("model_reasoning_effort") in {"low", "medium", "high"},
-            f"{role}.model_reasoning_effort",
-            failures,
-        )
+        path = root / f".codex/agents/{role}.toml"
         canonical = CANONICAL_ROLES / f"{role}.toml"
-        check(canonical.is_file(), f"canonical role {role}.toml exists", failures)
-        if canonical.is_file():
-            check(
-                role_path.read_bytes() == canonical.read_bytes(),
-                f"{role}.toml matches installed canonical template",
-                failures,
-            )
+        expected_bytes = (
+            apply_model_tiers(canonical.read_text(encoding="utf-8"), project_tiers).encode("utf-8")
+            if canonical.is_file()
+            else b""
+        )
+        check(path.is_file() and canonical.is_file() and path.read_bytes() == expected_bytes, f"{role}.toml matches installed canonical template", failures)
+        check(not contains_symlink(root, path), f".codex/agents/{role}.toml has no symlink", failures)
+        if path.is_file():
+            try:
+                data = read_toml(path)
+                expected_tier = CATALOG["roles"][role]["tier"]
+                check(data.get("model") == project_tiers[expected_tier], f"{role}.model", failures)
+            except (KeyError, tomllib.TOMLDecodeError, OSError) as exc:
+                print(f"FAIL parse role {role}: {exc}")
+                failures.append(f"parse role {role}")
 
-    agents_md = root / "AGENTS.md"
-    agents_is_safe = not contains_symlink(root, agents_md)
-    check(agents_is_safe, "AGENTS.md has no symlink", failures)
-    agents_text = agents_md.read_text(encoding="utf-8", errors="ignore") if agents_md.is_file() and agents_is_safe else ""
+    agents_text = agents_path.read_text(encoding="utf-8", errors="ignore")
     check(AGENTS_START in agents_text and AGENTS_END in agents_text, "AGENTS collaboration marker", failures)
     for relative in REQUIRED_DOCS:
-        doc_path = root / relative
-        check(doc_path.is_file(), f"{relative} exists", failures)
-        check(not contains_symlink(root, doc_path), f"{relative} has no symlink", failures)
-        check(doc_path.is_file() and doc_path.stat().st_size > 0, f"{relative} is non-empty", failures)
-
-    snapshot_path = root / "docs/协作/状态快照.json"
-    if snapshot_path.is_file() and not contains_symlink(root, snapshot_path):
+        path = root / relative
+        check(path.is_file() and path.stat().st_size > 0, f"{relative} exists and is non-empty", failures)
+        check(not contains_symlink(root, path), f"{relative} has no symlink", failures)
+        managed.append(path)
+    snapshot = root / "docs/协作/状态快照.json"
+    snapshot_payload: dict[str, Any] = {}
+    if snapshot.is_file():
         try:
-            json.loads(snapshot_path.read_text(encoding="utf-8"))
-            print("OK status snapshot is valid JSON")
-        except json.JSONDecodeError as exc:
+            snapshot_payload = json.loads(snapshot.read_text(encoding="utf-8"))
+            check(snapshot_payload.get("schema_version") == SCHEMA_VERSION and isinstance(snapshot_payload.get("threads"), list) and "tasks" not in snapshot_payload, "status snapshot schema 2.0 uses threads", failures)
+        except (OSError, json.JSONDecodeError) as exc:
             print(f"FAIL status snapshot JSON: {exc}")
             failures.append("status snapshot JSON")
 
-    managed_paths = [manifest_path, config_path, agents_md]
-    managed_paths.extend(root / relative for relative in REQUIRED_DOCS)
-    managed_paths.extend(role_paths)
     try:
-        repo_root = git_repository_root(root)
-        if repo_root is None:
+        runtime_paths = validate_runtime(root, failures)
+        managed.extend(runtime_paths)
+        registry = load_json(safe_state_path(root, THREAD_REGISTRY))
+        snapshot_threads = snapshot_payload.get("threads", [])
+        if isinstance(snapshot_threads, list):
+            check(snapshot_threads == registry.get("threads", []), "status snapshot threads match registry", failures)
+        repo = git_root(root)
+        if repo is None:
             print("SKIP managed files git-ignore check: not a Git repository")
         else:
-            for path in managed_paths:
-                check(not git_ignored(repo_root, path), f"{path.relative_to(root)} is trackable", failures)
-    except ValueError as exc:
-        print(f"FAIL Git tracking checks: {exc}")
-        failures.append("Git tracking checks")
+            for path in managed + role_paths:
+                check(not ignored(repo, path), f"{path.relative_to(root)} is trackable", failures)
+    except (OSError, ValueError) as exc:
+        print(f"FAIL runtime/Git validation: {exc}")
+        failures.append("runtime/Git validation")
 
     if failures:
         print(f"FAILURES={len(failures)}")
@@ -247,9 +281,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        exit_code = main()
+        raise SystemExit(main())
     except Exception as exc:
         print(f"FAIL unexpected doctor error: {type(exc).__name__}: {exc}")
         print("STATE=static_validation_failed")
-        exit_code = 1
-    raise SystemExit(exit_code)
+        raise SystemExit(1)

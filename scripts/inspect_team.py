@@ -95,7 +95,15 @@ def team_signals(root: Path, config: dict[str, Any]) -> list[str]:
 
     manifest = root / ".codex" / "team-bootstrap.json"
     if manifest.is_file():
-        signals.append("team_manifest")
+        try:
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            signals.append(f"team_manifest:{payload.get('schema_version', 'unknown')}")
+        except (OSError, json.JSONDecodeError):
+            signals.append("team_manifest:invalid")
+
+    state_dir = root / ".codex" / "team"
+    if state_dir.is_dir() and any(state_dir.glob("*.json")):
+        signals.append("runtime_state")
 
     agents_md = root / "AGENTS.md"
     if agents_md.is_file():
@@ -115,16 +123,32 @@ def inspect(root: Path) -> dict[str, Any]:
     git_root, dirty = inspect_git(root)
     if signals:
         route = "existing-team"
-        next_action = "运行 team_audit.py 生成只读迁移报告；用户确认前不得覆盖团队配置"
+        manifest_signal = next((item for item in signals if item.startswith("team_manifest:")), "")
+        schema_version = manifest_signal.split(":", 1)[1] if ":" in manifest_signal else "unknown"
+        if manifest_signal == "team_manifest:1.0":
+            route_detail = "existing-team:v1"
+            next_action = "先 dry-run team_upgrade.py；确认备份与 v1->v2 迁移计划后再 --apply"
+        elif manifest_signal == "team_manifest:2.0":
+            route_detail = "existing-team:v2"
+            next_action = "运行 team_doctor.py 和 thread_orchestrator.py health；异常时先只读审计"
+        else:
+            route_detail = "existing-team:audit"
+            next_action = "运行 team_audit.py 生成只读迁移报告；未知 schema 不得自动覆盖"
     elif has_business_content(root):
         route = "existing-project"
+        route_detail = "existing-project"
+        schema_version = "none"
         next_action = "先 dry-run team_init.py，确认追加内容、冲突和备份计划后再 --apply"
     else:
         route = "new"
+        route_detail = "new"
+        schema_version = "none"
         next_action = "先 dry-run team_init.py，确认角色档案后再 --apply"
     return {
         "project": str(root),
         "route": route,
+        "route_detail": route_detail,
+        "schema_version": schema_version,
         "team_signals": signals,
         "git_root": str(git_root) if git_root else None,
         "dirty_count": len(dirty),
@@ -146,6 +170,8 @@ def main() -> int:
         else:
             print(f"PROJECT={result['project']}")
             print(f"ROUTE={result['route']}")
+            print(f"ROUTE_DETAIL={result['route_detail']}")
+            print(f"SCHEMA_VERSION={result['schema_version']}")
             print(f"TEAM_SIGNALS={','.join(result['team_signals']) or 'none'}")
             print(f"GIT_ROOT={result['git_root'] or 'none'}")
             print(f"DIRTY_COUNT={result['dirty_count']}")

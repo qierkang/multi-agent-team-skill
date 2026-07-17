@@ -110,10 +110,16 @@ def load_threads(path: Path | None) -> tuple[list[dict[str, Any]], list[str]]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise AuditError(f"任务快照不可读取: {exc}") from exc
-    threads = payload.get("threads") if isinstance(payload, dict) else payload
+    warnings: list[str] = []
+    if isinstance(payload, dict) and "threads" in payload:
+        threads = payload.get("threads")
+    elif isinstance(payload, dict) and "tasks" in payload:
+        threads = payload.get("tasks")
+        warnings.append("检测到 v1 tasks 快照，已只读兼容；升级时将迁移为 v2 threads")
+    else:
+        threads = payload
     if not isinstance(threads, list):
         raise AuditError("任务快照必须是数组，或包含 threads 数组的对象")
-    warnings: list[str] = []
     normalized: list[dict[str, Any]] = []
     for index, item in enumerate(threads, 1):
         if not isinstance(item, dict):

@@ -1,33 +1,46 @@
 ---
 name: multi-agent-team
-description: 当用户要求“初始化多Agent研发团队”“多线程协作”“审计或迁移已有团队”“检查僵尸任务”“团队 doctor”“按我的团队制度初始化”，提到 team-init/team-audit，或显式使用 $multi-agent-team 时触发。用于为新项目或已有项目部署、审计和验证一次性多智能体研发团队；不适用于单文件小修改或纯咨询。
+description: 当用户要求初始化或升级多 Agent 研发团队、动态创建长期任务、多任务并行、团队健康检测、僵尸任务、Token 节省、异常恢复，提到 team-init/team-upgrade/team-audit，或显式使用 $multi-agent-team 时触发。不适用于单文件小修改或纯咨询。
 metadata:
-  version: "0.2.0"
+  version: "1.0.1"
 ---
 
-# 多智能体研发团队编排
+# 受控多智能体团队
 
-一个 Skill 统一承载团队检查、初始化、审计、迁移计划、静态验证和双场景回归；`scripts/` 是执行工具，`templates/` 是部署模板的单一事实来源。
+主任务是唯一控制面；按评分在“主任务直接做 / 一次性子智能体 / 长期任务”中选择。长期任务可派生一次性子智能体，但不得再创建长期任务。
 
-| 目标状态 | 路由 | 必须读取 |
+| 目标状态 | 路由 | 必须读取/执行 |
 |---|---|---|
-| 空目录或新项目 | `new` | `references/workflow-new-team.md` |
-| 已有业务项目但未部署团队 | `existing-project` | `references/workflow-existing-project.md` |
-| 已有 `.codex/agents`、`[agents.*]`、安装清单或常驻任务 | `existing-team` | `references/workflow-existing-team.md` + `references/migration-rules.md` |
-| 只检查安装质量 | `doctor` | `references/completion-gate.md` |
-| 检查 Skill 自身结构 | `skill-health` | 运行 `python3 scripts/health_check.py` |
+| 空目录或新项目 | `new` | `references/workflow-new-team.md` + `scripts/team_init.py` |
+| 旧项目未部署团队 | `existing-project` | `references/workflow-existing-project.md` + `team_init.py` |
+| 受管 v1 团队 | `existing-team:v1` | `references/schema-migration.md` + `team_upgrade.py` |
+| 未知/非受管团队 | `existing-team:audit` | `workflow-existing-team.md` + `team_audit.py` |
+| 规划长期任务 | `orchestrate` | `runtime-orchestration.md` + `thread_orchestrator.py plan` |
+| 健康/异常/Token | `runtime-health` | `health-anomaly-token.md` + `thread_orchestrator.py health` |
 
-用户给出路径后，先运行 `python3 scripts/inspect_team.py --project <项目根目录>`，不得凭目录名判断路由。
+用户给出路径后必须先运行：
 
-## 硬约束
+```bash
+python3 scripts/inspect_team.py --project <项目根目录>
+```
 
-- 初始化器默认 dry-run；旧团队必须先审计，不静默覆盖角色、配置、AGENTS 或业务文件。
-- 老项目采用 inspect-first 和非侵入式安装，只追加受管协作块并保留备份。
-- `max_depth = 1`、默认 `max_threads = 6`、同时写代码的实例不超过 2 个。
-- 运行中不换模型；升级时保存现场并创建更高档位的新实例。
-- reviewer 必须是全新只读实例，只接收验收标准、最终 diff 和测试输出。
-- 完整产物外置，子任务只回传不超过 10 行摘要和证据路径。
+## 默认策略
+
+- `recommend`：默认模式，评分达标只推荐新长期任务。
+- `controlled-auto`：用户显式开启后，主任务可调用客户端任务工具创建，再用 `register --apply` 记录返回 ID。
+- 运行时脚本本身不伪造任务 ID，不绕过客户端授权，不自动执行外部发布、生产写入或凭据变更。
+- 默认使用当前 Codex 的 Luna/Terra/Sol 三档模型；订阅不支持或需自定义时，用 `--model-fast/--model-standard/--model-advanced` 安全覆盖，并以运行态冒烟确认可用性。
+- 构造 `thread_orchestrator.py plan` 的任务 JSON 前，先读 `references/runtime-orchestration.md` 的“任务输入字段表”和 `examples/task-input.example.json`，字段名以该表为准（如 `domain_key`/`expected_days`，勿用别名）。
+
+## 生产级约束
+
+- 初始化/升级默认 dry-run；未知 schema 失败关闭；不覆盖业务文件、自定义配置或角色。
+- 每个派发包含目标、所有权、验证、停止条件；同时写入最多 2，路径互斥。
+- 同 `domain_key` 只有一个活跃长期任务；写入使用锁、revision 与幂等键。
+- reviewer 始终为全新只读实例；完成状态必须有证据路径。
+- Token 70% 压缩、85% 冻结范围、100% 停止；同因两次失败后升级而非盲目重试。
+- 子任务回传不超过 10 行；完整 diff、日志和测试落盘，主任务回传阶段进度。
 
 ## 完成闸
 
-依次执行 `inspect_team.py`、对应路由脚本、`team_doctor.py` 和 `regression_check.py`。静态检查不能替代目标项目自己的 explorer/reviewer 运行态冒烟；未验证实际模型和沙箱时必须保持 `runtime_smoke_test=pending`。
+执行 `team_doctor.py` + `thread_orchestrator.py health` + 项目自身测试 + 全新 explorer/reviewer 运行态冒烟。修改 Skill 本身后必须运行 `python3 scripts/health_check.py --deep`。

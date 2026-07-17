@@ -1,0 +1,29 @@
+{
+  "schema_version": "2.0",
+  "skill_version": "1.0.1",
+  "thread_creation_mode": "recommend",
+  "creation_threshold": 7,
+  "subagent_threshold": 4,
+  "max_active_long_threads": 5,
+  "max_concurrent_writers": 2,
+  "stale_heartbeat_minutes": 30,
+  "model_tiers": {
+    "fast": "gpt-5.6-luna",
+    "standard": "gpt-5.6-terra",
+    "advanced": "gpt-5.6-sol"
+  },
+  "token_policy": {
+    "summary_line_limit": 10,
+    "compact_at_ratio": 0.7,
+    "scope_freeze_at_ratio": 0.85,
+    "stop_at_ratio": 1.0,
+    "default_thread_budget": 120000
+  },
+  "retention_policy": {
+    "full_days": 30,
+    "summary_days": 90,
+    "archive_policy": "manual"
+  },
+  "external_action_policy": "explicit-user-approval",
+  "updated_at": ""
+}

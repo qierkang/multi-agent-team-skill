@@ -24,11 +24,12 @@ python3 scripts/health_check.py --deep
 
 - 全新环境初始化回归。
 - 已有业务项目非侵入式回归。
-- 已有团队只读审计和安全门禁回归。
+- 受管 v1 非空任务升级、未知团队只读审计和安全门禁回归。
+- 并发注册、所有权、Token、snapshot/registry 等价性和 reconcile 故障回归。
 
 深度检查最终应输出：
 
 ```text
-STATE=regression_passed; new=passed; existing=passed
+STATE=regression_passed; new=passed; existing=passed; runtime=passed
 STATE=skill_health_passed
 ```

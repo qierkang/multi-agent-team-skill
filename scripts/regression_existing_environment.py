@@ -18,7 +18,14 @@ INSPECT = SKILL_ROOT / "scripts" / "inspect_team.py"
 INIT = SKILL_ROOT / "scripts" / "team_init.py"
 AUDIT = SKILL_ROOT / "scripts" / "team_audit.py"
 DOCTOR = SKILL_ROOT / "scripts" / "team_doctor.py"
+UPGRADE = SKILL_ROOT / "scripts" / "team_upgrade.py"
 THREADS = SKILL_ROOT / "examples" / "threads.example.json"
+TEMPLATES = SKILL_ROOT / "templates"
+MODEL_ARGS = (
+    "--model-fast", "gpt-5.3-codex-spark",
+    "--model-standard", "gpt-5.3-codex",
+    "--model-advanced", "gpt-5.4",
+)
 
 
 def run(*args: object, expected: tuple[int, ...] = (0,)) -> subprocess.CompletedProcess[str]:
@@ -73,7 +80,7 @@ def main() -> int:
         passed.append("existing project dry-run is non-invasive")
 
         applied = run(
-            "python3", INIT, "--project", project, "--profile", "core", "--apply"
+            "python3", INIT, "--project", project, "--profile", "core", "--apply", *MODEL_ARGS
         ).stdout
         require("STATE=team_installed" in applied, "existing project install failed")
         require(original_config in config.read_text(encoding="utf-8"), "original config content lost")
@@ -86,6 +93,129 @@ def main() -> int:
         require(list(backup_root.glob("*/.codex/config.toml")), "config backup missing")
         require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", project).stdout, "doctor failed")
         passed.append("existing config, AGENTS and business files are preserved with backup")
+
+        patch_v2 = repo / "patch-v2"
+        shutil.copytree(project, patch_v2)
+        patch_manifest_path = patch_v2 / ".codex/team-bootstrap.json"
+        patch_state_path = patch_v2 / ".codex/team/project-state.json"
+        patch_manifest = json.loads(patch_manifest_path.read_text(encoding="utf-8"))
+        patch_state = json.loads(patch_state_path.read_text(encoding="utf-8"))
+        patch_manifest["skill_version"] = "1.0.0"
+        patch_state["skill_version"] = "1.0.0"
+        patch_manifest_path.write_text(json.dumps(patch_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        patch_state_path.write_text(json.dumps(patch_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        patch_business = {path: digest(path) for path in (patch_v2 / "README.md", patch_v2 / "app.py")}
+        patch_plan = run("python3", UPGRADE, "--project", patch_v2).stdout
+        require("STATE=patch_upgrade_plan_ready" in patch_plan, "v2 patch upgrade dry-run not ready")
+        patch_apply = run("python3", UPGRADE, "--project", patch_v2, "--apply").stdout
+        require("STATE=team_patch_upgraded" in patch_apply, "v2 patch upgrade did not apply")
+        require(all(digest(path) == value for path, value in patch_business.items()), "v2 patch upgrade changed business files")
+        require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", patch_v2).stdout, "v2 patch upgrade doctor failed")
+        passed.append("managed v2 patch upgrade updates metadata transactionally")
+
+        managed_v1 = repo / "managed-v1"
+        shutil.copytree(project, managed_v1)
+        for installed_role in (managed_v1 / ".codex/agents").glob("*.toml"):
+            shutil.copy2(TEMPLATES / "agents" / installed_role.name, installed_role)
+        v1_manifest_path = managed_v1 / ".codex/team-bootstrap.json"
+        v1_manifest = json.loads(v1_manifest_path.read_text(encoding="utf-8"))
+        v1_manifest["schema_version"] = "1.0"
+        v1_manifest["skill_version"] = "0.2.0"
+        v1_manifest.pop("orchestration", None)
+        v1_manifest_path.write_text(json.dumps(v1_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        shutil.rmtree(managed_v1 / ".codex/team")
+        for name in ("长期线程注册表.md", "异常记录.md"):
+            (managed_v1 / "docs/协作" / name).unlink()
+        snapshot_path = managed_v1 / "docs/协作/状态快照.json"
+        snapshot_path.write_text(
+            json.dumps({
+                "schema_version": "1.0",
+                "updated_at": "",
+                "max_threads": 6,
+                "max_concurrent_writers": 2,
+                "tasks": [{
+                    "id": "legacy-live",
+                    "title": "legacy active task",
+                    "status": "in_progress",
+                    "summary": "preserve this task",
+                    "owned_paths": ["legacy/component"],
+                    "evidence_paths": [],
+                    "attempts": 1,
+                    "needs_user_input": False,
+                }],
+            }, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        managed_agents_path = managed_v1 / "AGENTS.md"
+        managed_agents_path.write_text(
+            managed_agents_path.read_text(encoding="utf-8")
+            .replace("<!-- multi-agent-team:start -->", "<!-- team-init:start -->")
+            .replace("<!-- multi-agent-team:end -->", "<!-- team-init:end -->"),
+            encoding="utf-8",
+        )
+        preserved = [managed_v1 / ".codex/config.toml", managed_v1 / "README.md", managed_v1 / "app.py"]
+        preserved_hashes = {path: digest(path) for path in preserved}
+        v1_inspection = run("python3", INSPECT, "--project", managed_v1, "--json").stdout
+        v1_payload = json.loads(v1_inspection)
+        require(v1_payload["route_detail"] == "existing-team:v1", "v1 manifest not detailed to existing-team:v1")
+        require(v1_payload["schema_version"] == "1.0", "v1 schema version not surfaced")
+        upgrade_plan = run("python3", UPGRADE, "--project", managed_v1, "--thread-mode", "controlled-auto").stdout
+        require("STATE=upgrade_plan_ready" in upgrade_plan, "v1 upgrade dry-run not ready")
+        require(not (managed_v1 / ".codex/team").exists(), "upgrade dry-run wrote runtime state")
+        upgraded = run(
+            "python3", UPGRADE, "--project", managed_v1, "--thread-mode", "controlled-auto",
+            "--apply", *MODEL_ARGS,
+        ).stdout
+        require("STATE=team_upgraded" in upgraded, "v1 upgrade did not complete")
+        require(all(digest(path) == value for path, value in preserved_hashes.items()), "upgrade changed config or business files")
+        require(
+            'model = "gpt-5.3-codex-spark"' in (managed_v1 / ".codex/agents/explorer.toml").read_text(encoding="utf-8")
+            and 'model = "gpt-5.4"' in (managed_v1 / ".codex/agents/architect.toml").read_text(encoding="utf-8"),
+            "upgrade did not inject configured model tiers into managed roles",
+        )
+        migrated = json.loads(v1_manifest_path.read_text(encoding="utf-8"))
+        require(migrated["schema_version"] == "2.0" and migrated["skill_version"] == "1.0.1", "manifest migration mismatch")
+        require(migrated["orchestration"]["thread_creation_mode"] == "controlled-auto", "migration thread mode mismatch")
+        migrated_registry = json.loads((managed_v1 / ".codex/team/thread-registry.json").read_text(encoding="utf-8"))
+        migrated_snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        require(
+            len(migrated_registry["threads"]) == 1
+            and migrated_registry["threads"][0]["id"] == "legacy-live"
+            and migrated_registry["threads"][0]["status"] == "active",
+            "non-empty v1 task was not preserved in runtime registry",
+        )
+        require(migrated_snapshot["threads"] == migrated_registry["threads"], "migrated snapshot differs from runtime registry")
+        migrated_locks = json.loads((managed_v1 / ".codex/team/ownership-locks.json").read_text(encoding="utf-8"))
+        require(migrated_locks["locks"] == [{"path": "legacy/component", "thread_id": "legacy-live"}], "migrated ownership lock missing")
+        require("<!-- multi-agent-team:start -->" in managed_agents_path.read_text(encoding="utf-8"), "legacy AGENTS marker was not upgraded")
+        require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", managed_v1).stdout, "upgraded v1 doctor failed")
+        require(list((managed_v1 / ".codex/backups/multi-agent-team").glob("*/.codex/team-bootstrap.json")), "upgrade manifest backup missing")
+        require(list((managed_v1 / ".codex/backups/multi-agent-team").glob("*/.codex/agents/explorer.toml")), "upgrade role backup missing")
+        passed.append("managed v1 upgrades transactionally with model injection and preserves business files")
+
+        unknown = repo / "unknown-schema"
+        shutil.copytree(managed_v1, unknown)
+        unknown_manifest_path = unknown / ".codex/team-bootstrap.json"
+        unknown_manifest = json.loads(unknown_manifest_path.read_text(encoding="utf-8"))
+        unknown_manifest["schema_version"] = "9.9"
+        unknown_manifest_path.write_text(json.dumps(unknown_manifest), encoding="utf-8")
+        before_unknown = digest(unknown_manifest_path)
+        rejected = run("python3", UPGRADE, "--project", unknown, "--apply", expected=(2,))
+        require("STATE=upgrade_failed" in rejected.stdout and digest(unknown_manifest_path) == before_unknown, "unknown schema was not fail-closed")
+        passed.append("unknown schema upgrade fails closed without writes")
+
+        snapshot_conflict = repo / "snapshot-conflict"
+        (snapshot_conflict / "docs/协作").mkdir(parents=True)
+        (snapshot_conflict / "README.md").write_text("# product\n", encoding="utf-8")
+        conflict_snapshot = snapshot_conflict / "docs/协作/状态快照.json"
+        conflict_snapshot.write_text(json.dumps({"schema_version": "1.0", "tasks": []}), encoding="utf-8")
+        conflict_hash = digest(conflict_snapshot)
+        conflict_plan = run("python3", INIT, "--project", snapshot_conflict, expected=(2,)).stdout
+        require("STATE=plan_blocked" in conflict_plan and "不是 schema 2.0" in conflict_plan, "legacy snapshot conflict was not planned as blocked")
+        conflict_apply = run("python3", INIT, "--project", snapshot_conflict, "--apply", expected=(2,)).stdout
+        require("STATE=install_failed" in conflict_apply and digest(conflict_snapshot) == conflict_hash, "conflicting snapshot was overwritten")
+        require(not (snapshot_conflict / ".codex/team-bootstrap.json").exists(), "blocked snapshot install wrote manifest")
+        passed.append("existing incompatible collaboration snapshot blocks installation without writes")
 
         marker_only = repo / "marker-only-team"
         marker_only.mkdir()

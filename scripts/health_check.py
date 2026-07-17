@@ -15,6 +15,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from runtime_state import state_defaults
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "templates"
@@ -48,6 +50,8 @@ REQUIRED_FILES = {
     "assets/architecture/en/team-orchestration-overview.png",
     "assets/architecture/en/safe-existing-skill-upgrade.png",
     "docs/README_en.md",
+    "docs/README_zh-tw.md",
+    "examples/task-input.example.json",
     "SECURITY.md",
     "CODE_OF_CONDUCT.md",
     ".github/workflows/ci.yml",
@@ -57,6 +61,14 @@ REQUIRED_FILES = {
     "install/setup.sh",
     "install/sync.sh",
     "install/doctor.sh",
+    "scripts/runtime_state.py",
+    "scripts/thread_orchestrator.py",
+    "scripts/team_upgrade.py",
+    "scripts/regression_runtime_orchestration.py",
+    "references/runtime-orchestration.md",
+    "references/long-thread-policy.md",
+    "references/health-anomaly-token.md",
+    "references/schema-migration.md",
 }
 FORBIDDEN_REFERENCES = (
     "assets/agents/",
@@ -98,6 +110,8 @@ def main() -> int:
         catalog_roles = set(catalog.get("roles", {}))
         profiles = catalog.get("profiles", {})
         emit(catalog_roles == EXPECTED_ROLES, "role catalog contains exactly eight roles", failures)
+        emit(catalog.get("schema_version") == "2.0", "role catalog schema 2.0", failures)
+        emit(catalog.get("skill_version") == "1.0.1", "role catalog skill version 1.0.1", failures)
         emit(
             isinstance(profiles, dict)
             and bool(profiles)
@@ -129,6 +143,13 @@ def main() -> int:
         "project/docs/任务包.template.md",
         "project/docs/摘要.template.md",
         "project/docs/状态快照.template.json",
+        "project/docs/长期线程注册表.template.md",
+        "project/docs/异常记录.template.md",
+        "project/team/project-state.template.json",
+        "project/team/thread-registry.template.json",
+        "project/team/ownership-locks.template.json",
+        "project/team/budget-state.template.json",
+        "project/team/recovery-journal.template.json",
         "reports/团队迁移报告.template.md",
     ):
         emit((TEMPLATES / relative).is_file(), f"template exists {relative}", failures)
@@ -136,10 +157,23 @@ def main() -> int:
     try:
         tomllib.loads((TEMPLATES / "project/config.snippet.toml").read_text(encoding="utf-8"))
         json.loads((TEMPLATES / "project/docs/状态快照.template.json").read_text(encoding="utf-8"))
+        for path in (TEMPLATES / "project/team").glob("*.json"):
+            json.loads(path.read_text(encoding="utf-8"))
         print("PASS project TOML and JSON templates parse")
     except (OSError, tomllib.TOMLDecodeError, json.JSONDecodeError) as exc:
         print(f"FAIL parse project templates: {exc}")
         failures.append("parse project templates")
+
+    try:
+        for relative, expected in state_defaults("recommend").items():
+            template = TEMPLATES / "project/team" / f"{relative.stem}.template.json"
+            actual = json.loads(template.read_text(encoding="utf-8"))
+            expected = dict(expected)
+            expected["updated_at"] = ""
+            emit(actual == expected, f"runtime template matches generator {template.name}", failures)
+    except (OSError, json.JSONDecodeError, TypeError) as exc:
+        print(f"FAIL compare runtime templates: {exc}")
+        failures.append("compare runtime templates")
 
     text_files = [
         path

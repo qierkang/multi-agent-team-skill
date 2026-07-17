@@ -15,6 +15,11 @@ SUITES = (
         ROOT / "scripts" / "regression_existing_environment.py",
         "STATE=existing_environment_regression_passed",
     ),
+    (
+        "runtime",
+        ROOT / "scripts" / "regression_runtime_orchestration.py",
+        "STATE=runtime_orchestration_regression_passed",
+    ),
 )
 
 
@@ -32,7 +37,10 @@ def main() -> int:
             print(f"STATE=regression_failed; suite={name}; exit={result.returncode}")
             return 1
         states[name] = "passed"
-    print(f"STATE=regression_passed; new={states['new']}; existing={states['existing']}")
+    print(
+        f"STATE=regression_passed; new={states['new']}; "
+        f"existing={states['existing']}; runtime={states['runtime']}"
+    )
     return 0
 
 
