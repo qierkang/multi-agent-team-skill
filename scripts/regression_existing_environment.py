@@ -75,13 +75,17 @@ def main() -> int:
         passed.append("existing business project routes without false team detection")
 
         plan = run("python3", INIT, "--project", project, "--profile", "core").stdout
-        require("STATE=plan_ready" in plan, "existing project plan not ready")
+        require(
+            "STATE=plan_ready" in plan and "TITLE_SUGGESTED=主控｜Existing Product" in plan
+            and "RENAME_ACTION=codex_app__set_thread_title" in plan,
+            "existing project plan/title not ready",
+        )
         require(original_config == config.read_text(encoding="utf-8"), "dry-run changed config")
         require(original_agents == agents_md.read_text(encoding="utf-8"), "dry-run changed AGENTS")
         passed.append("existing project dry-run is non-invasive")
 
         applied = run(
-            "python3", INIT, "--project", project, "--profile", "core", "--apply", *MODEL_ARGS
+            "python3", INIT, "--project", project, "--profile", "core", "--thread-mode", "recommend", "--apply", *MODEL_ARGS
         ).stdout
         require("STATE=team_installed" in applied, "existing project install failed")
         require(original_config in config.read_text(encoding="utf-8"), "original config content lost")
@@ -169,13 +173,19 @@ def main() -> int:
         patch_state_path = patch_v2 / ".codex/team/project-state.json"
         patch_manifest = json.loads(patch_manifest_path.read_text(encoding="utf-8"))
         patch_state = json.loads(patch_state_path.read_text(encoding="utf-8"))
-        patch_manifest["skill_version"] = "1.0.1"
-        patch_state["skill_version"] = "1.0.1"
         patch_state.pop("control_plane_mode", None)
         for key in ("max_concurrency_total", "queue_capacity", "timeout_policy", "dispatch_policy"):
             patch_state.pop(key, None)
         patch_manifest["orchestration"]["control_plane"] = "main-task-only"
-        for key in ("lanes", "queue_capacity", "max_concurrency_total", "max_concurrent_writers"):
+        for key in (
+            "control_plane_is_goal",
+            "goal_policy",
+            "interaction_policy",
+            "lanes",
+            "queue_capacity",
+            "max_concurrency_total",
+            "max_concurrent_writers",
+        ):
             patch_manifest["orchestration"].pop(key, None)
         (patch_v2 / "docs/协作/最小派发包模板.md").unlink()
         patch_manifest_path.write_text(json.dumps(patch_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -192,6 +202,13 @@ def main() -> int:
             and patched_state["max_concurrency_total"] == 6
             and patched_state["queue_capacity"] == "unbounded",
             "v2 control-plane/queue policy was not migrated",
+        )
+        patched_orchestration = json.loads(patch_manifest_path.read_text(encoding="utf-8"))["orchestration"]
+        require(
+            patched_orchestration["control_plane_is_goal"] is False
+            and patched_orchestration["goal_policy"] == "explicit-only"
+            and patched_orchestration["interaction_policy"] == "dispatch-return-immediately",
+            "v2 Goal/interaction policy was not migrated",
         )
         require((patch_v2 / "docs/协作/最小派发包模板.md").is_file(), "v2 patch did not add minimal dispatch template")
         require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", patch_v2).stdout, "v2 patch upgrade doctor failed")
@@ -286,7 +303,7 @@ def main() -> int:
             "upgrade did not preserve canonical model tiers for the active v1 instance",
         )
         migrated = json.loads(v1_manifest_path.read_text(encoding="utf-8"))
-        require(migrated["schema_version"] == "2.0" and migrated["skill_version"] == "2.0.0", "manifest migration mismatch")
+        require(migrated["schema_version"] == "2.0" and migrated["skill_version"] == "2.0.3", "manifest migration mismatch")
         require(migrated["orchestration"]["control_plane"] == "control-plane-only", "control-plane migration mismatch")
         require(migrated["orchestration"]["thread_creation_mode"] == "controlled-auto", "migration thread mode mismatch")
         migrated_registry = json.loads((managed_v1 / ".codex/team/thread-registry.json").read_text(encoding="utf-8"))

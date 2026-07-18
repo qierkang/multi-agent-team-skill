@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime_state import SKILL_VERSION
+from project_title import rename_action, suggested_title
 
 
 CONTROL_AGENT_KEYS = {"max_threads", "max_depth", "job_max_runtime_seconds"}
@@ -120,6 +121,7 @@ def has_business_content(root: Path) -> bool:
 
 
 def inspect(root: Path) -> dict[str, Any]:
+    title, title_source = suggested_title(root)
     config = read_config(root / ".codex" / "config.toml")
     signals = team_signals(root, config)
     git_root, dirty = inspect_git(root)
@@ -138,10 +140,10 @@ def inspect(root: Path) -> dict[str, Any]:
             installed_skill_version = str(manifest_payload.get("skill_version", "unknown"))
             if installed_skill_version != SKILL_VERSION:
                 route_detail = "existing-team:v2-upgrade"
-                next_action = "先 dry-run team_upgrade.py，确定迁移受管协作文件到 Skill 2.0.0"
+                next_action = "先 dry-run team_upgrade.py，确定迁移受管协作文件到 Skill 2.0.3"
             else:
                 route_detail = "existing-team:v2"
-                next_action = "运行 team_doctor.py 和 thread_orchestrator.py health；异常时先只读审计"
+                next_action = "运行 team_doctor.py 和 thread_orchestrator.py health；健康检查后自动重命名主控任务"
         else:
             installed_skill_version = "unknown"
             route_detail = "existing-team:audit"
@@ -170,6 +172,10 @@ def inspect(root: Path) -> dict[str, Any]:
         "dirty_count": len(dirty),
         "dirty_paths": dirty,
         "next": next_action,
+        "title": title,
+        "title_source": title_source,
+        "rename_action": rename_action(title),
+        "title_rename": "pending",
         "state": "inspection_done",
     }
 
@@ -194,6 +200,10 @@ def main() -> int:
             print(f"GIT_ROOT={result['git_root'] or 'none'}")
             print(f"DIRTY_COUNT={result['dirty_count']}")
             print(f"NEXT={result['next']}")
+            print(f"TITLE_SUGGESTED={result['title']}")
+            print(f"TITLE_SOURCE={result['title_source']}")
+            print(f"RENAME_ACTION={result['rename_action']}")
+            print("TITLE_RENAME=pending")
             print("STATE=inspection_done")
         return 0
     except Exception as exc:

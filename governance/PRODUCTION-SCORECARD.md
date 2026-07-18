@@ -3,6 +3,7 @@
 - 日期：2026-07-18
 - 结果：`97 / 100`
 - 证据：[v2 验证证据](../examples/regression-evidence-2026-07-18-v2.md)
+- 版本：2.0.3 dispatch-and-return 交互补丁；标题/turn 客户端调用仍以真实 Codex 客户端为准，未伪造成功证据。
 - 规则：仅已执行且有真实状态标记的检查计分；最终审查的 4 个 P1 与此前 legacy evidence、health 并发一致性、runtime smoke 闭环全部通过后才保留 95+。官方 validator 已使用临时隔离依赖真实通过；真实客户端 Agent 冒烟、视觉重生成和真实客户端健康心跳仍按残余风险扣分。
 
 | 维度 | 满分 | 得分 | 证据/扣分 |
@@ -29,4 +30,9 @@
 
 ## 发布建议
 
-建议版本 `2.0.0`。当前最终审查未留 P1；上述发布阻断均已有确定性回归通过，schema 保持 2.0，并由 `team_upgrade.py` 提供受管 1.x 的确定迁移。真实 Codex 客户端冒烟、视觉重生成和真实客户端健康心跳仍是发布后/目标项目级残余验证，不在本评分中伪造完成；官方 validator 已真实通过。
+建议版本 `2.0.3`。dispatch-and-return、interaction_policy 与 same-turn wait 回归通过；schema 保持 2.0，并由 `team_upgrade.py` 提供受管 1.x 的确定迁移。Python 无法控制客户端 turn 结束，真实 Codex UI 输入不阻塞仍属客户端行为，不能伪造为已验证。
+
+
+## Goal boundary
+- `goal_policy=explicit-only`; `control_plane_is_goal=false`; project control defaults to `controlled-auto`.
+- A project task/long-lived domain task is not a Codex Goal. An active Goal reports `GOAL_MODE=unsupported_for_control_plane_setup` and is never reused or created by this Skill.

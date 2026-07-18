@@ -3,7 +3,8 @@
 ## 初始化/升级
 
 - inspect 路由与实际动作一致，默认 dry-run 证据存在。
-- manifest 与 project-state 为 Skill 2.0.0，control plane 为 `control-plane-only`。
+- manifest 与 project-state 为 Skill 2.0.3，control plane 为 `control-plane-only`。
+- `interaction_policy` 固定 `dispatch_return_immediately=true`、`wait_same_turn=false`；派发 turn 不得 wait/poll/长测试/继续集成，且 ACK 后 return。
 - fast/project lane、无限队列、总并发 6、写并发 2 已声明；Codex `agents.max_depth=1`，registry 受管关系最多 depth 2。
 - 角色、AGENTS 受管块、完整/最小派发包、台账、快照和 `.codex/team/*` 存在。
 - 受管文件无 symlink、可追踪、schema 可解析，registry 与派生状态一致。
@@ -28,3 +29,8 @@ bash scripts/verify_assets.sh
 ```
 
 若存在官方 validator，再运行并记录真实输出。任何未执行项必须列为残余风险，不得写成通过。
+
+
+## Goal boundary
+- `goal_policy=explicit-only`; `control_plane_is_goal=false`; project control defaults to `controlled-auto`.
+- A project task/long-lived domain task is not a Codex Goal. An active Goal reports `GOAL_MODE=unsupported_for_control_plane_setup` and is never reused or created by this Skill.

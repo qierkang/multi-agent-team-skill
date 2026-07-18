@@ -60,21 +60,27 @@ def main() -> int:
         plan = run("python3", INIT, "--project", project, "--profile", "full").stdout
         after = tree_digest(project)
         require(before == after, "dry-run changed target tree")
-        require("STATE=plan_ready" in plan and "DRY_RUN=1" in plan, "dry-run state mismatch")
+        require(
+            "STATE=plan_ready" in plan and "DRY_RUN=1" in plan
+            and "TITLE_SUGGESTED=主控｜new-project" in plan
+            and "RENAME_ACTION=codex_app__set_thread_title" in plan
+            and "TITLE_RENAME=pending" in plan,
+            "dry-run state/title contract mismatch",
+        )
         passed.append("default dry-run writes nothing")
 
         applied = run(
             "python3", INIT, "--project", project, "--profile", "full",
             "--thread-mode", "controlled-auto", "--apply"
         ).stdout
-        require("STATE=team_installed" in applied, "install state mismatch")
+        require("STATE=team_installed" in applied and "TITLE_RENAME=pending" in applied, "install state/title mismatch")
         role_files = sorted((project / ".codex" / "agents").glob("*.toml"))
         require(len(role_files) == 8, "full profile did not install eight roles")
         manifest = json.loads((project / ".codex" / "team-bootstrap.json").read_text(encoding="utf-8"))
         require(manifest["skill"] == "multi-agent-team", "manifest skill mismatch")
         require(manifest["profile"] == "full", "manifest profile mismatch")
         require(manifest["schema_version"] == "2.0", "manifest schema mismatch")
-        require(manifest["skill_version"] == "2.0.0", "manifest skill version mismatch")
+        require(manifest["skill_version"] == "2.0.3", "manifest skill version mismatch")
         require(manifest["orchestration"]["control_plane"] == "control-plane-only", "control-plane mode mismatch")
         require(manifest["orchestration"]["lanes"] == ["fast", "project"], "lane manifest mismatch")
         require(manifest["orchestration"]["thread_creation_mode"] == "controlled-auto", "thread mode mismatch")

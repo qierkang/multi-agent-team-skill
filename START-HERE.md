@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2 Start Here
+# Multi-Agent Team Skill v2.0.3 Start Here
 
 ## 用户入口
 
@@ -9,6 +9,9 @@
 3. 按 `ROUTE_DETAIL` 读取 `references/INDEX.md` 中对应 workflow。
 4. 初始化或升级先 dry-run；只有用户明确要求落地时加 `--apply`。
 5. 未知团队先审计，禁止覆盖现有角色、配置、状态或业务文件。
+6. 每次 inspect、初始化、升级或最新版健康检查成功后，读取 `TITLE_SUGGESTED` 并调用 `codex_app__set_thread_title`；若客户端不可用，保留 `TITLE_RENAME=pending`，不把脚本输出当成客户端成功。
+
+显示名确定性优先级：README 第一处有效 H1 -> `package.json` / `pyproject.toml` / `Cargo.toml` 可读名称 -> 项目目录 basename。清理 Markdown 符号和空白，自动限制长度，不要求用户手工命名。
 
 ## 执行入口
 

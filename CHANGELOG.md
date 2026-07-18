@@ -1,5 +1,28 @@
 # 变更记录
 
+## 2.0.3 - 2026-07-18
+
+- 修复 Goal 抢占：普通 Codex 对话控制面不创建或复用 Goal；初始化/升级无冲突时 dry-run 后直接 apply。
+- 新增 `goal_policy=explicit-only` 与 `control_plane_is_goal=false`，项目主控默认 `controlled-auto`，并由 doctor/health 校验。
+- 增加触发短语、Goal 禁止路由、已有 Goal unsupported 和无需二次确认回归；诚实披露静态 Skill 无法绝对阻止客户端违规。
+
+- 修复主控 spawn Agent 后在同一 turn wait、轮询、长验收造成后续用户消息排队的问题。
+- 固化 `dispatch-and-return`：批量 spawn 后一次性 ACK 任务编号、角色、状态并立即 return；禁止同 turn `wait_agent`、polling、长测试和继续集成。
+- 将完成通知、health、验收、重派延后至用户 turn、完成事件 turn 或自动唤醒；以依赖队列和路径所有权保护新调度轮。
+- 新增 project-state/template `interaction_policy`，doctor、health_check 与确定性回归验证 same-turn wait 禁止和输出契约。
+- 明确 Python 无法控制客户端 turn 结束，验证不伪造真实 UI 并发证明；同步更新中英繁 README、references、governance 与验证证据。
+
+## 2.0.2 - 2026-07-18
+
+- 修复主控 spawn Agent 后在同一 turn wait、轮询、长验收造成后续用户消息排队的问题。
+- 固化 `dispatch-and-return` 与后续 turn/event 处理边界。
+
+## 2.0.1 - 2026-07-18
+
+- inspect-first 根据 README H1、项目 manifest、目录名确定主控显示名。
+- inspect、初始化、升级和健康路由输出 `codex_app__set_thread_title` 建议动作；Python 不伪造客户端成功，客户端不可用时保持 `TITLE_RENAME=pending`。
+- 已是最新版的健康检查路径同样执行标题建议。
+
 ## 2.0.0 - 2026-07-18
 
 - 主任务默认 `control-plane-only`，planner 不再允许主任务直接修改生产代码。

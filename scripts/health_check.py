@@ -71,6 +71,11 @@ REQUIRED_FILES = {
     "scripts/regression_runtime_orchestration.py",
     "scripts/regression_inspect_routes.py",
     "scripts/check_readme_links.py",
+    "scripts/project_title.py",
+    "scripts/regression_title_rename.py",
+    "scripts/regression_interaction_policy.py",
+    "scripts/goal_policy.py",
+    "scripts/regression_goal_policy.py",
     "references/runtime-orchestration.md",
     "references/long-thread-policy.md",
     "references/health-anomaly-token.md",
@@ -110,9 +115,11 @@ def main() -> int:
     emit(len(skill_text.splitlines()) <= 80, "SKILL.md stays within 80 lines", failures)
     emit(35 <= len(skill_text.splitlines()) <= 50, "SKILL.md stays near 40 lines", failures)
     emit(bool(re.search(r"(?m)^name:\s*multi-agent-team\s*$", skill_text)), "stable skill name", failures)
-    emit('version: "2.0.0"' in skill_text, "Skill metadata version 2.0.0", failures)
+    emit('version: "2.0.3"' in skill_text, "Skill metadata version 2.0.3", failures)
     emit("references/" in skill_text and "scripts/" in skill_text, "root entry routes progressively", failures)
     emit("control-plane-only" in skill_text and "fast lane" in skill_text and "project lane" in skill_text, "v2 control plane and lanes documented", failures)
+    emit("control_plane_is_goal" in skill_text and "explicit-only" in skill_text, "Goal is explicit-only and not the control plane", failures)
+    emit("create_goal(" not in skill_text and "call goal-writer" not in skill_text, "no executable Goal/goal-writer route in Skill", failures)
     emit("handle_in_main" not in skill_text and "use_subagents" not in skill_text, "no main-task implementation route", failures)
 
     try:
@@ -121,7 +128,7 @@ def main() -> int:
         profiles = catalog.get("profiles", {})
         emit(catalog_roles == EXPECTED_ROLES, "role catalog contains exactly eight roles", failures)
         emit(catalog.get("schema_version") == "2.0", "role catalog schema 2.0", failures)
-        emit(catalog.get("skill_version") == "2.0.0", "role catalog skill version 2.0.0", failures)
+        emit(catalog.get("skill_version") == "2.0.3", "role catalog skill version 2.0.3", failures)
         emit(
             isinstance(profiles, dict)
             and bool(profiles)
@@ -176,12 +183,12 @@ def main() -> int:
         failures.append("parse project templates")
 
     try:
-        for relative, expected in state_defaults("recommend").items():
+        for relative, expected in state_defaults("controlled-auto").items():
             template = TEMPLATES / "project/team" / f"{relative.stem}.template.json"
             actual = json.loads(template.read_text(encoding="utf-8"))
             expected = dict(expected)
             expected["updated_at"] = ""
-            emit(actual == expected, f"runtime template matches generator {template.name}", failures)
+        emit(actual == expected, f"runtime template matches generator {template.name}", failures)
     except (OSError, json.JSONDecodeError, TypeError) as exc:
         print(f"FAIL compare runtime templates: {exc}")
         failures.append("compare runtime templates")
@@ -262,6 +269,33 @@ def main() -> int:
         emit(
             optimized.returncode == 0 and "STATE=regression_passed" in optimized.stdout,
             "regressions pass with PYTHONOPTIMIZE=1",
+            failures,
+        )
+        title_result = subprocess.run(
+            ["python3", str(ROOT / "scripts/regression_title_rename.py")],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        print(title_result.stdout, end="")
+        emit(
+            title_result.returncode == 0 and "PASS title rename regression" in title_result.stdout,
+            "deterministic title rename regression",
+            failures,
+        )
+        interaction_result = subprocess.run(
+            ["python3", str(ROOT / "scripts/regression_interaction_policy.py")],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        print(interaction_result.stdout, end="")
+        emit(
+            interaction_result.returncode == 0
+            and "STATE=interaction_policy_regression_passed" in interaction_result.stdout,
+            "deterministic dispatch-return regression",
             failures,
         )
 

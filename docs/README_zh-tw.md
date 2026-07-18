@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2
+# Multi-Agent Team Skill v2.0.3
 
 <p align="center">
   <a href="../README.md">简体中文</a> · <a href="./README_zh-tw.md">繁體中文</a> · <a href="./README_en.md">English</a>
@@ -6,9 +6,11 @@
 
 <p align="center"><img src="../assets/social-preview.png?v=2" alt="Multi-Agent Team Skill" width="100%" /></p>
 
-2.0.0 將主任務預設為唯一 `control-plane-only` 控制面：只做唯讀判斷、拆分、排隊、派發、監控、驗收、彙報與受管調度狀態寫入，不修改生產程式碼。
+2.0.3 將主任務預設為唯一 `control-plane-only` 控制面，並加入硬性 `dispatch-and-return` 互動策略：成功 spawn 一個或一批 Agent 後立即 ACK 任務編號、角色與狀態並 return；同一 turn 不得 wait、輪詢、長測試或整合。
 
 ## Inspect-first
+
+inspect-first 依 README 第一個有效 H1、可讀專案 manifest、目錄 basename 確定顯示名稱，輸出 `TITLE_SUGGESTED=主控｜<專案顯示名>` 與 `RENAME_ACTION=codex_app__set_thread_title(...)`。主控必須呼叫 Codex 客戶端；Python 不偽造成功。客戶端不支援時安裝仍成功並保留 `TITLE_RENAME=pending`，最新版僅做 health 也同樣執行。
 
 使用者只需說「用 multi-agent-team-skill 初始化／升級／檢查這個專案」，不需選擇 orchestrator、lane 或 schema。
 
@@ -21,7 +23,7 @@ python3 scripts/inspect_team.py --project <專案根目錄>
 | `new` | dry-run 初始化 |
 | `existing-project` | 非侵入 dry-run 安裝 |
 | `existing-team:v1` | 確定性遷移至 schema 2.0 |
-| `existing-team:v2-upgrade` | 事務升級受管 1.x 團隊至 2.0.0 |
+| `existing-team:v2-upgrade` | 事務升級受管 1.x 團隊至 2.0.3 |
 | `existing-team:v2` | doctor 與 runtime health |
 | `existing-team:audit` | 唯讀審計；未知 schema 失敗關閉 |
 
@@ -33,6 +35,8 @@ python3 scripts/inspect_team.py --project <專案根目錄>
 | project lane | 跨日、持續、獨立領域 | 建立或複用長期領域任務 | 完整包；高風險 fresh reviewer |
 
 固定層級為「主任務控制面 -> project 長期任務 -> 一次性 Agent」，禁止更深巢狀。隊列數量不限，執行總併發預設 6、寫實例 2。依賴、路徑所有權、心跳、逾時、狀態、交接與證據都外置於 `.codex/team/`。
+
+完成通知、健康巡檢、驗收與重派只能在後續使用者 turn、完成事件 turn 或自動喚醒處理；新訊息優先進入新調度輪。同步等待必須由使用者明確要求並先告知會阻塞輸入。Python 無法控制客戶端 turn 結束，不得偽造真實 UI 併發證明。
 
 ## 模型與失敗升級
 
@@ -86,3 +90,10 @@ bash scripts/verify_assets.sh
 `templates/` 是部署真源，`assets/` 僅保存靜態展示資產。模板不得含客戶名、業務專案名、本機絕對路徑或憑據。外部發布、生產寫入、付費動作與憑據變更必須單獨明確批准。
 
 作者：`xyqierkang@gmail.com` · [GitHub](https://github.com/qierkang)
+
+
+## Goal 隔離與專案主控
+
+「主控任務／主控執行緒／專案主控／將目前對話設為專案主控」都表示普通 Codex 對話控制面，絕不等同於 Goal。初始化或升級措辭即表示 dry-run 無衝突後可 apply，無衝突時不需二次確認；專案主控預設 `controlled-auto`。除非使用者明確要求建立 Goal、使用目標模式或設定 Goal 預算，否則不得呼叫 Goal、goal-writer 或 `/goal`。
+
+若目前執行緒已有 Goal，回報 `GOAL_MODE=unsupported_for_control_plane_setup`，建議在普通新執行緒執行；不得重用、新建、完成或刪除該 Goal。project task／長期領域任務是受管協作任務，不是 Codex Goal。靜態 Skill 無法從程式碼層絕對阻止客戶端違反指令，只能透過 AGENTS/Skill 硬約束和審查降低風險。

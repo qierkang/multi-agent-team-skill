@@ -124,8 +124,30 @@ def validate_runtime(root: Path, failures: list[str]) -> list[Path]:
     policy = payloads.get(PROJECT_STATE, {})
     check(policy.get("skill_version") == SKILL_VERSION, "project state skill version", failures)
     check(policy.get("control_plane_mode") == "control-plane-only", "control plane is read-only for production code", failures)
+    check(policy.get("control_plane_is_goal") is False, "control plane is not a Codex Goal", failures)
+    check(policy.get("goal_policy") == "explicit-only", "Goal creation policy is explicit-only", failures)
     check(policy.get("thread_creation_mode") in {"recommend", "controlled-auto"}, "valid thread creation mode", failures)
     check(policy.get("external_action_policy") == "explicit-user-approval", "external actions require approval", failures)
+    interaction = policy.get("interaction_policy", {})
+    check(
+        isinstance(interaction, dict)
+        and interaction.get("dispatch_return_immediately") is True
+        and interaction.get("wait_same_turn") is False
+        and interaction.get("poll_same_turn") is False
+        and interaction.get("long_validation_same_turn") is False
+        and interaction.get("sync_wait_requires_explicit_user_request") is True
+        and interaction.get("sync_wait_requires_warning") is True,
+        "dispatch returns immediately and forbids same-turn waiting/polling",
+        failures,
+    )
+    check(
+        isinstance(interaction.get("follow_up_processing"), list)
+        and set(interaction["follow_up_processing"]) == {
+            "user_turn", "completion_event", "health_check", "acceptance", "redispatch"
+        },
+        "follow-up processing is deferred to later turns/events",
+        failures,
+    )
     check(policy.get("creation_threshold") == 7, "project-lane routing threshold", failures)
     check(policy.get("max_concurrency_total") == 6, "total concurrency limit is 6", failures)
     check(policy.get("queue_capacity") == "unbounded", "queue capacity is unbounded", failures)
@@ -240,6 +262,8 @@ def main() -> int:
     check(manifest.get("schema_version") == SCHEMA_VERSION, f"manifest schema={SCHEMA_VERSION}", failures)
     check(manifest.get("skill_version") == SKILL_VERSION, f"manifest skill version={SKILL_VERSION}", failures)
     orchestration = manifest.get("orchestration", {})
+    check(orchestration.get("control_plane_is_goal") is False, "manifest control plane is not a Codex Goal", failures)
+    check(orchestration.get("goal_policy") == "explicit-only", "manifest Goal policy is explicit-only", failures)
     check(orchestration.get("control_plane") == "control-plane-only", "main task is control-plane-only", failures)
     check(orchestration.get("lanes") == ["fast", "project"], "manifest declares fast/project lanes", failures)
     smoke_status = manifest.get("runtime_smoke_test", "pending")

@@ -38,7 +38,7 @@
 
 ## DEC-0010：默认推荐，显式开启受控自动
 
-`recommend` 为安全默认；`controlled-auto` 是项目级显式选择。无论哪种模式，外部发布、生产写入、付费动作和凭据修改仍需用户批准。
+项目主控默认 `controlled-auto`；`recommend` 仅作为显式兼容模式。无论哪种模式，外部发布、生产写入、付费动作和凭据修改仍需用户批准。
 
 ## DEC-0011：注册表是真源，锁与预算是可重建派生状态
 
@@ -71,3 +71,7 @@
 ## DEC-0018：health 与 mutation 共用一致性锁
 
 health 必须在 mutation 使用的同一 runtime lock 下读取 registry、ownership locks、budget 和人读快照。这样仍能检测静态 drift，但不会把正常多文件写入的中间窗口误报为 drift。
+
+## DEC-0019：Goal 不属于控制面
+
+主控任务、主控线程、项目主控和当前对话设为项目主控均表示普通 Codex 对话控制面。`goal_policy=explicit-only` 且 `control_plane_is_goal=false`；project task/长期领域任务与 Codex Goal 明确分离。已有 Goal 的线程报告 `unsupported_for_control_plane_setup`，不复用或新建。

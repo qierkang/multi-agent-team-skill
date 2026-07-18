@@ -1,5 +1,17 @@
 # 变更记录
 
+## 2.0.3 - 2026-07-18
+
+- 将主控交互契约升级为 `dispatch-and-return`，禁止派发 turn 内 wait、轮询、长测试和继续集成。
+- `interaction_policy` 进入 project state/template，并由 doctor、health 和确定性回归共同验收。
+- 明确后续用户消息优先及 Python 不可伪造客户端 UI 并发证据的治理边界。
+
+## 2.0.1 - 2026-07-18
+
+- inspect-first 根据 README H1、项目 manifest、目录名确定主控显示名。
+- inspect、初始化、升级和健康路由输出 `codex_app__set_thread_title` 建议动作；Python 不伪造客户端成功，客户端不可用时保持 `TITLE_RENAME=pending`。
+- 已是最新版的健康检查路径同样执行标题建议。
+
 ## 2.0.0 - 2026-07-18
 
 - 确立 control-plane-only 与 fast/project 双通道。

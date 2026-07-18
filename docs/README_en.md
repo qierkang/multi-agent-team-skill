@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2
+# Multi-Agent Team Skill v2.0.3
 
 <p align="center">
   <a href="../README.md">简体中文</a> · <a href="./README_zh-tw.md">繁體中文</a> · <a href="./README_en.md">English</a>
@@ -6,11 +6,13 @@
 
 <p align="center"><img src="../assets/social-preview.png?v=2" alt="Multi-Agent Team Skill" width="100%" /></p>
 
-Version 2.0.0 makes the main task a `control-plane-only` coordinator. It may inspect, split, queue, dispatch, monitor, accept, report, and write managed orchestration state, but it does not edit production code.
+Version 2.0.3 makes the main task a `control-plane-only` coordinator and adds a hard `dispatch-and-return` interaction policy. After one or more Agents are spawned, the main task ACKs IDs, roles, and status and returns immediately; it does not wait, poll, test, or integrate in the same turn.
 
 ![Two-lane orchestration](../assets/architecture/en/team-orchestration-overview.png)
 
 ## Inspect first
+
+inspect-first derives a deterministic display name from the first valid README H1, a readable project manifest, or the directory basename. It emits the localized `TITLE_SUGGESTED=主控｜<display name>` and `codex_app__set_thread_title(...)` action. The main task must call the Codex client; Python never fakes success. Unsupported clients leave `TITLE_RENAME=pending` without failing installation, including an already-current health-only route.
 
 Users only need to ask the Skill to initialize, upgrade, or check a project. They do not need to choose internal orchestrator or lane terms.
 
@@ -23,7 +25,7 @@ python3 scripts/inspect_team.py --project <project-root>
 | `new` | dry-run initialization |
 | `existing-project` | non-invasive dry-run installation |
 | `existing-team:v1` | deterministic schema-1 to schema-2 migration |
-| `existing-team:v2-upgrade` | transactional managed 1.x to 2.0.0 upgrade |
+| `existing-team:v2-upgrade` | transactional managed 1.x to 2.0.3 upgrade |
 | `existing-team:v2` | doctor and runtime health |
 | `existing-team:audit` | read-only audit; unknown schemas fail closed |
 
@@ -37,6 +39,8 @@ python3 scripts/inspect_team.py --project <project-root>
 The only supported hierarchy is main control plane -> project task -> one-shot agent. A project task cannot create another project task.
 
 The queue is unbounded, while active execution is capped at six and active writers at two. Dependencies, ancestor path ownership, heartbeat, timeout, status, handoff, revision CAS, and evidence are persisted in `.codex/team/`.
+
+Completion notifications, health checks, acceptance, and redispatch happen only in a later user turn, completion-event turn, or automation wake-up. New user messages take priority over background Agents. Synchronous waiting requires an explicit user request and a warning that input will be blocked. Python cannot end a client turn and must not fabricate UI concurrency evidence.
 
 ## Model routing and replacement
 
@@ -108,3 +112,10 @@ The deep gate covers inspect, init, upgrade, doctor, health, orchestration, new/
 Templates are deployable sources of truth; assets are static visuals only. Templates contain no customer identity, business-specific project names, machine-local absolute paths, or credentials. External publishing, production writes, paid actions, and credential changes always require separate explicit approval.
 
 Author: `xyqierkang@gmail.com` · [GitHub](https://github.com/qierkang)
+
+
+## Goal isolation and project control plane
+
+“Main control task/thread”, “project control”, and setting the current conversation as project control mean an ordinary Codex conversation, never a Goal. Initialization or upgrade wording authorizes apply after a conflict-free dry-run; do not ask for a second confirmation. Project control defaults to `controlled-auto`. Do not invoke Goal, goal-writer, or `/goal` unless the user explicitly requests creating a Goal, goal mode, or a Goal budget.
+
+If the current thread already has a Goal, report `GOAL_MODE=unsupported_for_control_plane_setup`, recommend a new ordinary thread, and never reuse, create, complete, or delete that Goal. A project task/long-lived domain task is a managed collaboration task, not a Codex Goal. This static Skill cannot absolutely prevent a client from violating instructions; enforce through AGENTS/Skill constraints and review.

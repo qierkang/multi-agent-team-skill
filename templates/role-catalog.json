@@ -1,7 +1,7 @@
 {
   "schema_version": "2.0",
   "skill_name": "multi-agent-team",
-  "skill_version": "2.0.0",
+  "skill_version": "2.0.3",
   "defaults": {
     "max_threads": 6,
     "max_depth": 1,

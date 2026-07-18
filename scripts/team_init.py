@@ -28,6 +28,7 @@ from runtime_state import (
     normalize_model_tiers,
     state_defaults,
 )
+from project_title import rename_action, suggested_title
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -448,6 +449,11 @@ def print_plan(
 ) -> None:
     print("===== multi-agent-team install plan =====")
     print(f"PROJECT={root}")
+    title, source = suggested_title(root)
+    print(f"TITLE_SUGGESTED={title}")
+    print(f"TITLE_SOURCE={source}")
+    print(f"RENAME_ACTION={rename_action(title)}")
+    print("TITLE_RENAME=pending")
     print(f"PROFILE={profile}")
     print(f"ROLES={','.join(roles)}")
     for tier in ("fast", "standard", "advanced"):
@@ -479,8 +485,8 @@ def main() -> int:
     parser.add_argument(
         "--thread-mode",
         choices=["recommend", "controlled-auto"],
-        default="recommend",
-        help="长期任务创建模式；默认只推荐，显式开启后主任务可受控自动创建",
+        default="controlled-auto",
+        help="长期任务创建模式；项目主控默认受控自动，仍不放宽外部动作审批",
     )
     parser.add_argument("--model-fast", help="fast 档真实模型 ID（explorer/chore）")
     parser.add_argument("--model-standard", help="standard 档真实模型 ID（implementer/debugger 等）")
@@ -626,11 +632,14 @@ def main() -> int:
                 "thread_creation_mode": args.thread_mode,
                 "registry": str(MANAGED_STATE_FILES[1]),
                 "control_plane": "control-plane-only",
+                "control_plane_is_goal": False,
+                "goal_policy": "explicit-only",
                 "lanes": ["fast", "project"],
                 "queue_capacity": "unbounded",
                 "max_concurrency_total": 6,
                 "max_concurrent_writers": 2,
                 "runtime_adapter": "codex-client-thread-tools",
+                "interaction_policy": "dispatch-return-immediately",
             },
             "runtime_smoke_test": "pending",
             "runtime_smoke_evidence": {"explorer": [], "reviewer": []},

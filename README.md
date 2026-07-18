@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2
+# Multi-Agent Team Skill v2.0.3
 
 <div align="center">
   <strong>control-plane-only · fast lane · project lane · deterministic migration</strong><br>
@@ -15,11 +15,15 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-2.0.0-informational.svg" alt="Version" /></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-2.0.3-informational.svg" alt="Version" /></a>
   <a href="./scripts/"><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg" alt="Python" /></a>
 </p>
 
 ## v2 的核心变化
+
+### 主控任务自动命名与非阻塞派发
+
+inspect-first 按 README 第一处有效 H1、可读项目 manifest、目录 basename 确定显示名，并输出 `TITLE_SUGGESTED=主控｜<项目显示名>` 与 `RENAME_ACTION=codex_app__set_thread_title(...)`。主控必须调用 Codex 客户端完成重命名；Python 不伪造客户端成功。客户端不支持时安装不失败，但明确 `TITLE_RENAME=pending`；最新版仅做健康检查也执行同一动作。
 
 主任务不再承担生产代码实现。它默认是唯一 `control-plane-only` 控制面，只负责：
 
@@ -29,6 +33,8 @@
 - 在外部发布、生产写入和凭据变更前取得独立批准。
 
 普通执行进入 fast lane，复杂持续工作进入 project lane。planner 不再返回“主任务直接实现”。
+
+派发遵循 `dispatch-and-return`：成功 spawn 一个或一批 Agent 后，先批量完成 spawn，再一次性回传任务编号、角色、状态并结束当前 turn。同一派发 turn 禁止 `wait_agent`、重复状态轮询、长测试或继续集成；完成通知、health、验收和重派延后到用户 turn、完成事件 turn 或自动唤醒。用户新消息优先由新的调度轮处理，依赖队列和路径所有权避免后台冲突。同步等待必须由用户明确要求且先告知会阻塞输入。
 
 ![双通道团队编排总览](./assets/architecture/zh-CN/team-orchestration-overview.png)
 
@@ -52,7 +58,7 @@ python3 scripts/inspect_team.py --project <项目根目录>
 |---|---|
 | `new` | dry-run 初始化协作层 |
 | `existing-project` | 非侵入 dry-run，保留业务代码、配置和文档 |
-| `existing-team:v1` | 确定性迁移到 schema 2.0 / Skill 2.0.0 |
+| `existing-team:v1` | 确定性迁移到 schema 2.0 / Skill 2.0.3 |
 | `existing-team:v2-upgrade` | 事务升级受管规则、状态字段和模板 |
 | `existing-team:v2` | doctor + runtime health |
 | `existing-team:audit` | 未知或自定义团队只读审计，失败关闭 |
@@ -187,7 +193,7 @@ python3 scripts/thread_orchestrator.py replace --project <path> \
 
 | 文件 | 作用 |
 |---|---|
-| `.codex/team/project-state.json` | 控制面、并发、lane、模型、超时与 Token 策略 |
+| `.codex/team/project-state.json` | 控制面、并发、lane、模型、超时、Token 与 `interaction_policy` 策略 |
 | `.codex/team/thread-registry.json` | 排队与运行任务真源，含依赖、实例、层级和 handoff |
 | `.codex/team/ownership-locks.json` | 活跃写路径派生锁 |
 | `.codex/team/budget-state.json` | 项目与任务 Token 派生状态 |
@@ -223,6 +229,7 @@ bash scripts/verify_assets.sh
 - 默认 dry-run；未知或自定义团队先审计。
 - 不覆盖业务源码、构建工具、技术栈或目录结构。
 - 不伪造客户端任务 ID、运行态冒烟、测试结果或 reviewer 结论。
+- Python 只能校验和输出 dispatch-return 契约，无法控制客户端 turn 结束，禁止伪造真实 UI 并发证明。
 - 发布、生产写入、付费动作和凭据变更必须独立明确批准。
 - 不提交、不推送是调用方边界；脚本自身不会执行 Git 发布动作。
 
@@ -237,3 +244,10 @@ bash scripts/verify_assets.sh
 - [Security](./SECURITY.md)
 
 作者：`xyqierkang@gmail.com` · [GitHub](https://github.com/qierkang)
+
+
+## Goal 隔离与项目主控
+
+主控任务、主控线程、项目主控和“当前对话设为项目主控”都是普通 Codex 对话控制面，绝不等价于 Goal。初始化或升级措辞即 dry-run 无冲突后 apply 的授权，无冲突时无需二次确认；项目主控默认 `controlled-auto`。除非用户明确说创建 Goal、使用目标模式或设置目标预算，否则不调用 Goal、goal-writer 或 `/goal`。
+
+若当前线程已有 Goal，报告 `GOAL_MODE=unsupported_for_control_plane_setup`，建议在普通新线程执行；不复用、新建、完成或删除已有 Goal。project task/长期领域任务是本 Skill 的受管协作任务，不是 Codex Goal。静态 Skill 无法从代码层绝对阻止客户端违反指令，只能通过 AGENTS/Skill 硬约束和审查降低风险。

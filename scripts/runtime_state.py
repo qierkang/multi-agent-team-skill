@@ -16,7 +16,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "2.0"
-SKILL_VERSION = "2.0.0"
+SKILL_VERSION = "2.0.3"
 TEAM_DIR = Path(".codex/team")
 PROJECT_STATE = TEAM_DIR / "project-state.json"
 THREAD_REGISTRY = TEAM_DIR / "thread-registry.json"
@@ -68,7 +68,7 @@ def normalize_model_tiers(
 
 
 def project_policy(
-    thread_mode: str = "recommend",
+    thread_mode: str = "controlled-auto",
     model_tiers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if thread_mode not in {"recommend", "controlled-auto"}:
@@ -77,6 +77,8 @@ def project_policy(
         "schema_version": SCHEMA_VERSION,
         "skill_version": SKILL_VERSION,
         "control_plane_mode": "control-plane-only",
+        "control_plane_is_goal": False,
+        "goal_policy": "explicit-only",
         "thread_creation_mode": thread_mode,
         "creation_threshold": 7,
         "max_concurrency_total": 6,
@@ -93,6 +95,21 @@ def project_policy(
             "light_review": "on-failure",
             "high_risk_review": "always-fresh-reviewer",
             "max_nesting_depth": 2,
+        },
+        "interaction_policy": {
+            "dispatch_return_immediately": True,
+            "wait_same_turn": False,
+            "poll_same_turn": False,
+            "long_validation_same_turn": False,
+            "sync_wait_requires_explicit_user_request": True,
+            "sync_wait_requires_warning": True,
+            "follow_up_processing": [
+                "user_turn",
+                "completion_event",
+                "health_check",
+                "acceptance",
+                "redispatch",
+            ],
         },
         "model_tiers": normalize_model_tiers(model_tiers),
         "token_policy": {
@@ -135,7 +152,7 @@ def empty_journal() -> dict[str, Any]:
 
 
 def state_defaults(
-    thread_mode: str = "recommend",
+    thread_mode: str = "controlled-auto",
     model_tiers: dict[str, str] | None = None,
 ) -> dict[Path, dict[str, Any]]:
     return {

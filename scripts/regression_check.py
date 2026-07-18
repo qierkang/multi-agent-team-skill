@@ -25,6 +25,16 @@ SUITES = (
         ROOT / "scripts" / "regression_runtime_orchestration.py",
         "STATE=runtime_orchestration_regression_passed",
     ),
+    (
+        "interaction",
+        ROOT / "scripts" / "regression_interaction_policy.py",
+        "STATE=interaction_policy_regression_passed",
+    ),
+    (
+        "goal-policy",
+        ROOT / "scripts" / "regression_goal_policy.py",
+        "STATE=goal_policy_regression_passed",
+    ),
 )
 
 

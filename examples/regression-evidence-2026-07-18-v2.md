@@ -1,7 +1,7 @@
-# Multi-Agent Team Skill v2 验证证据
+# Multi-Agent Team Skill v2.0.2 验证证据
 
 - 日期：2026-07-18
-- Skill：`multi-agent-team` 2.0.0
+- Skill：`multi-agent-team` 2.0.2
 - 状态：发布阻断修复后的确定性源码包验证通过；官方 validator 与真实客户端 Agent 冒烟见残余风险。
 
 ## 真实命令与结果
@@ -15,6 +15,8 @@ python3 scripts/health_check.py --deep
 - 退出码：`0`
 - 最终状态：`STATE=skill_health_passed`
 - 包含：Python 编译、模板/生成器一致性、零本机绝对路径、视觉资产、README 链接、普通回归和优化模式回归。
+
+标题补丁额外回归：`python3 scripts/regression_title_rename.py` 退出码 `0`，覆盖新目录、已有项目、已有团队、README H1、manifest 和目录名 fallback，并确认客户端动作只输出建议且 `TITLE_RENAME=pending`。
 
 ### Deterministic regressions
 
@@ -89,6 +91,12 @@ STATE=regression_passed; inspect=passed; new=passed; existing=passed; runtime=pa
 
 因此验证不依赖会被 `-O` 移除的 `assert`。
 
+### Dispatch-and-return 回归
+
+确定性回归 `python3 scripts/regression_interaction_policy.py` 检查生成器、project-state template、SKILL 与 AGENTS 模板：`dispatch_return_immediately=true`，`wait_same_turn/poll_same_turn/long_validation_same_turn=false`，并要求同步等待先获用户明确请求和阻塞告知。
+
+该回归只证明配置和输出契约拒绝 same-turn wait；Python 无法控制 Codex 客户端 turn 结束，因此没有伪造真实 UI 并发或后续消息不排队的证据。完成通知、health、验收和重派必须由后续用户 turn、完成事件 turn 或自动化唤醒处理。
+
 ### README 与视觉资产
 
 ```bash
@@ -128,12 +136,13 @@ python3 ~/.claude/plugins/marketplaces/anthropic-agent-skills/skills/skill-creat
 - 队列至少回归入队 12 个待执行项且不受活跃容量限制；活跃总并发 6、写并发 2。
 - high risk 返回 `always-fresh-reviewer`；轻任务返回 minimal packet + `on-failure`。
 - 同因失败两次保留原 Terra 实例 ID，之后只允许新 Sol 实例通过 handoff 接替。
-- schema 1.0 和 Skill 1.0.1 受管团队均确定升级到 2.0.0；旧 `evidence` 字段仅在指向项目内真实非空普通文件时保留。
+- schema 1.0 和 Skill 1.0.1 受管团队均确定升级到 2.0.2；旧 `evidence` 字段仅在指向项目内真实非空普通文件时保留。
 - 受管 v2 的显式 recommend -> controlled-auto 更新已由 doctor 和真实 project enqueue/dispatch 回归覆盖。
 - 未升级旧团队的只读 audit 同时识别 `evidence` 与 `evidence_paths`，已完成且有旧证据的任务不再误报缺证据。
 - 新项目、已有项目、已有团队、未知 schema、ignored 路径和 symlink 逃逸均有回归。
+- inspect、初始化计划和最新版团队路由均输出确定性 `TITLE_SUGGESTED` / `RENAME_ACTION`；客户端调用未在 Python 中伪造。
 
 ## 未验证/残余风险
 
 - 临时回归环境没有调用真实 Codex 客户端创建 Agent；`runtime_smoke.py` 状态机已验证，但具体订阅中的 Luna/Terra/Sol entitlement、沙箱、工具权限和证据真实性仍需每个目标项目冒烟。无法执行时必须保持 `pending`，只完成一个角色时保持 `partial_done`。
-- 现有视觉图片沿用已登记的 image_gen 资产，只验证引用和 provenance，没有为 2.0.0 重新生成视觉内容。
+- 现有视觉图片沿用已登记的 image_gen 资产，只验证引用和 provenance，没有为 2.0.2 重新生成视觉内容。

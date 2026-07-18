@@ -4,6 +4,10 @@
 
 主任务默认 `control-plane-only`：可以只读判断、拆分、排队、派发、监控、验收、汇报和写受管调度状态，但不得修改生产代码。planner 永不返回“主任务直接实现”。
 
+### Dispatch-and-return
+
+成功 spawn 一个或一批 Agent 后，主任务必须立即 ACK 任务编号、角色、状态并结束当前 turn；多个独立 Agent 必须先批量 spawn，再一次性 ACK。该 turn 禁止 `wait_agent`、重复 read/status polling、长测试或继续集成。完成通知、health、验收和重派只在后续用户 turn、完成事件 turn 或自动化唤醒处理；用户新消息优先，由依赖队列和路径所有权避免冲突。同步等待仅在用户明确要求并先告知会阻塞输入时允许。Python 无法控制客户端 turn 结束，不得伪造 UI 并发证据。
+
 ## 任务输入字段
 
 | 字段 | 类型 | 必填 | 约束 |
@@ -69,3 +73,8 @@ python3 scripts/thread_orchestrator.py replace --project <path> --task-id TASK-0
 - dispatch 前依赖必须 completed，所有权和容量必须可用。
 - 运行中不改模型；replace 必须使用新 instance ID 和 planner 要求的更高档模型。
 - completed 的每个证据路径必须是项目相对、无 `..`、已存在、非空、非 symlink 的普通文件；audit、update、migration、doctor、health 与 runtime smoke 使用同一校验口径。终态自动释放活跃锁。
+
+
+## Goal boundary
+- `goal_policy=explicit-only`; `control_plane_is_goal=false`; project control defaults to `controlled-auto`.
+- A project task/long-lived domain task is not a Codex Goal. An active Goal reports `GOAL_MODE=unsupported_for_control_plane_setup` and is never reused or created by this Skill.

@@ -43,6 +43,7 @@ from team_init import (
     transactional_write,
 )
 from thread_orchestrator import derived_runtime_state, ownership_conflicts
+from project_title import rename_action, suggested_title
 
 
 SUPPORTED_FROM = {"1.0"}
@@ -294,7 +295,7 @@ def remap_registered_models(
 
 
 def upgrade_v2_records(threads: list[dict[str, Any]], policy: dict[str, Any]) -> list[dict[str, Any]]:
-    """Deterministically add v2.0.0 queue and replacement fields to schema-2 records."""
+    """Deterministically add v2.0.3 queue, interaction and replacement fields to schema-2 records."""
     upgraded = json.loads(json.dumps(threads))
     now = now_iso()
     model_tiers = policy["model_tiers"]
@@ -340,6 +341,7 @@ def reconfigure_v2_models(
     apply: bool,
     allow_ignored: bool,
 ) -> int:
+    title, source = suggested_title(root)
     state_path = root / PROJECT_STATE
     registry_path = root / THREAD_REGISTRY
     locks_path = root / OWNERSHIP_LOCKS
@@ -372,10 +374,18 @@ def reconfigure_v2_models(
         manifest.get("skill_version") != SKILL_VERSION
         or state.get("skill_version") != SKILL_VERSION
         or state.get("control_plane_mode") != "control-plane-only"
+        or state.get("interaction_policy") != project_policy(current_thread_mode, old_tiers)["interaction_policy"]
+        or manifest.get("orchestration", {}).get("control_plane_is_goal") is not False
+        or manifest.get("orchestration", {}).get("goal_policy") != "explicit-only"
+        or manifest.get("orchestration", {}).get("interaction_policy") != "dispatch-return-immediately"
     )
     if not model_change and not mode_change and not version_sync:
         print(f"SCHEMA={SCHEMA_VERSION}; SKILL_VERSION={manifest.get('skill_version')}")
         print("STATE=already_current")
+        print(f"TITLE_SUGGESTED={title}")
+        print(f"TITLE_SOURCE={source}")
+        print(f"RENAME_ACTION={rename_action(title)}")
+        print("TITLE_RENAME=pending")
         return 0
 
     roles = manifest.get("roles")
@@ -468,11 +478,14 @@ def reconfigure_v2_models(
         "thread_creation_mode": updated_state["thread_creation_mode"],
         "registry": ".codex/team/thread-registry.json",
         "control_plane": "control-plane-only",
+        "control_plane_is_goal": False,
+        "goal_policy": "explicit-only",
         "lanes": ["fast", "project"],
         "queue_capacity": "unbounded",
         "max_concurrency_total": updated_state["max_concurrency_total"],
         "max_concurrent_writers": updated_state["max_concurrent_writers"],
         "runtime_adapter": "codex-client-thread-tools",
+        "interaction_policy": "dispatch-return-immediately",
     }
     if model_change:
         updated_manifest["model_tiers_updated_at"] = now
@@ -506,6 +519,10 @@ def reconfigure_v2_models(
     ignored = [str(path.relative_to(root)) for path in targets if git_ignored(root, str(path.relative_to(root)))]
     print("===== multi-agent-team v2 patch/model upgrade =====")
     print(f"PROJECT={root}")
+    print(f"TITLE_SUGGESTED={title}")
+    print(f"TITLE_SOURCE={source}")
+    print(f"RENAME_ACTION={rename_action(title)}")
+    print("TITLE_RENAME=pending")
     for tier in ("fast", "standard", "advanced"):
         print(f"MODEL: {tier}={old_tiers[tier]}->{new_tiers[tier]}")
     print(f"THREAD_MODE={current_thread_mode}->{requested_thread_mode}")
@@ -560,7 +577,7 @@ def main() -> int:
     parser.add_argument(
         "--thread-mode",
         choices=["recommend", "controlled-auto"],
-        help="显式更新项目级线程模式；v2 未提供时保留现值，v1 默认 recommend",
+        help="显式更新项目级线程模式；v2 未提供时保留现值，v1 默认 controlled-auto",
     )
     parser.add_argument("--apply", action="store_true", help="执行写入；默认 dry-run")
     parser.add_argument("--allow-ignored", action="store_true")
@@ -636,7 +653,7 @@ def main() -> int:
             return 2
 
         snapshot_text, legacy_threads = migrate_snapshot(root / "docs/协作/状态快照.json")
-        requested_thread_mode = args.thread_mode or "recommend"
+        requested_thread_mode = args.thread_mode or "controlled-auto"
         state_payloads = state_defaults(requested_thread_mode, model_tiers)
         registry = state_payloads[THREAD_REGISTRY]
         registry["threads"] = migrate_threads(root, legacy_threads, state_payloads[PROJECT_STATE])
@@ -666,6 +683,11 @@ def main() -> int:
 
         print("===== multi-agent-team upgrade plan =====")
         print(f"PROJECT={root}")
+        title, source = suggested_title(root)
+        print(f"TITLE_SUGGESTED={title}")
+        print(f"TITLE_SOURCE={source}")
+        print(f"RENAME_ACTION={rename_action(title)}")
+        print("TITLE_RENAME=pending")
         print(f"SCHEMA={current_schema}->{SCHEMA_VERSION}")
         print(f"SKILL_VERSION={manifest.get('skill_version')}->{SKILL_VERSION}")
         print(f"THREAD_MODE={requested_thread_mode}")
@@ -713,11 +735,14 @@ def main() -> int:
                 "thread_creation_mode": requested_thread_mode,
                 "registry": ".codex/team/thread-registry.json",
                 "control_plane": "control-plane-only",
+                "control_plane_is_goal": False,
+                "goal_policy": "explicit-only",
                 "lanes": ["fast", "project"],
                 "queue_capacity": "unbounded",
                 "max_concurrency_total": state_payloads[PROJECT_STATE]["max_concurrency_total"],
                 "max_concurrent_writers": state_payloads[PROJECT_STATE]["max_concurrent_writers"],
                 "runtime_adapter": "codex-client-thread-tools",
+                "interaction_policy": "dispatch-return-immediately",
             },
             "runtime_smoke_test": "pending",
             "runtime_smoke_evidence": {"explorer": [], "reviewer": []},
