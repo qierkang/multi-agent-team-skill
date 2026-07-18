@@ -11,12 +11,12 @@ import tempfile
 import hashlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 
 SCHEMA_VERSION = "2.0"
-SKILL_VERSION = "1.0.1"
+SKILL_VERSION = "2.0.0"
 TEAM_DIR = Path(".codex/team")
 PROJECT_STATE = TEAM_DIR / "project-state.json"
 THREAD_REGISTRY = TEAM_DIR / "thread-registry.json"
@@ -76,12 +76,24 @@ def project_policy(
     return {
         "schema_version": SCHEMA_VERSION,
         "skill_version": SKILL_VERSION,
+        "control_plane_mode": "control-plane-only",
         "thread_creation_mode": thread_mode,
         "creation_threshold": 7,
-        "subagent_threshold": 4,
-        "max_active_long_threads": 5,
+        "max_concurrency_total": 6,
         "max_concurrent_writers": 2,
+        "queue_capacity": "unbounded",
         "stale_heartbeat_minutes": 30,
+        "timeout_policy": {
+            "fast_lane_seconds": 1800,
+            "project_lane_seconds": 86400,
+        },
+        "dispatch_policy": {
+            "light_packet": "minimal",
+            "default_packet": "full",
+            "light_review": "on-failure",
+            "high_risk_review": "always-fresh-reviewer",
+            "max_nesting_depth": 2,
+        },
         "model_tiers": normalize_model_tiers(model_tiers),
         "token_policy": {
             "summary_line_limit": 10,
@@ -153,6 +165,51 @@ def safe_state_path(root: Path, relative: Path) -> Path:
             break
     target.resolve(strict=False).relative_to(root)
     return target
+
+
+def validate_evidence_path(root: Path, raw: str) -> str:
+    """Return a canonical project-relative path to a real, non-empty evidence file."""
+    if not isinstance(raw, str):
+        raise ValueError("evidence path must be a string")
+    value = raw.strip()
+    candidate = PurePosixPath(value.replace("\\", "/"))
+    windows_candidate = PureWindowsPath(value)
+    if (
+        not value
+        or candidate.is_absolute()
+        or windows_candidate.is_absolute()
+        or bool(windows_candidate.drive)
+        or ".." in candidate.parts
+        or str(candidate) in {"", "."}
+    ):
+        raise ValueError("evidence path must be project-relative without '..'")
+    target = root.joinpath(*candidate.parts)
+    current = root
+    for part in candidate.parts:
+        current /= part
+        if current.is_symlink():
+            raise ValueError(f"evidence path contains symlink: {value}")
+    try:
+        target.resolve(strict=True).relative_to(root.resolve(strict=True))
+    except FileNotFoundError as exc:
+        raise ValueError(f"evidence file does not exist: {value}") from exc
+    except ValueError as exc:
+        raise ValueError(f"evidence path escapes project: {value}") from exc
+    if not target.is_file() or target.stat().st_size <= 0:
+        raise ValueError(f"evidence file must be non-empty: {value}")
+    return candidate.as_posix()
+
+
+def validate_evidence_paths(root: Path, values: object) -> list[str]:
+    """Validate and de-duplicate a persisted evidence path array."""
+    if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+        raise ValueError("evidence_paths must be a string array")
+    normalized: list[str] = []
+    for raw in values:
+        path = validate_evidence_path(root, raw)
+        if path not in normalized:
+            normalized.append(path)
+    return normalized
 
 
 def load_json(path: Path, *, required: bool = True) -> dict[str, Any]:
@@ -238,6 +295,23 @@ def model_for_task(policy: dict[str, Any], task: dict[str, Any]) -> tuple[str, s
     return tier, model
 
 
+def next_model_tier(policy: dict[str, Any], current_model: str) -> tuple[str, str] | None:
+    """Return the next Luna/Terra/Sol tier without mutating a running instance."""
+    models = policy.get("model_tiers", {})
+    order = ("fast", "standard", "advanced")
+    matches = [index for index, tier in enumerate(order) if models.get(tier) == current_model]
+    if not matches:
+        raise ValueError(f"model is not registered in model_tiers: {current_model}")
+    current = max(matches)
+    if current == len(order) - 1:
+        return None
+    tier = order[current + 1]
+    model = models.get(tier)
+    if not isinstance(model, str) or not model:
+        raise ValueError(f"missing model tier mapping: {tier}")
+    return tier, model
+
+
 def thread_score(task: dict[str, Any]) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
@@ -256,6 +330,19 @@ def thread_score(task: dict[str, Any]) -> tuple[int, list[str]]:
     add(bool(task.get("decision_retention")), 1, "需要长期保存决策")
     add(bool(task.get("parallelizable")), 1, "可与其他领域并行")
     return score, reasons
+
+
+def is_light_task(task: dict[str, Any]) -> bool:
+    """Light work receives a minimal dispatch packet and review only on failure."""
+    return (
+        str(task.get("risk", "medium")).lower() == "low"
+        and float(task.get("expected_days", 0) or 0) <= 0.5
+        and int(task.get("task_packages", 1) or 1) <= 1
+        and not bool(task.get("independent_release"))
+        and not bool(task.get("decision_retention"))
+        and str(task.get("task_type", "implementation")).lower()
+        in {"exploration", "chore", "docs", "research", "implementation"}
+    )
 
 
 def active_threads(registry: dict[str, Any]) -> list[dict[str, Any]]:

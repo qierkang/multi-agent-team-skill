@@ -1,46 +1,45 @@
 ---
 name: multi-agent-team
-description: 当用户要求初始化或升级多 Agent 研发团队、动态创建长期任务、多任务并行、团队健康检测、僵尸任务、Token 节省、异常恢复，提到 team-init/team-upgrade/team-audit，或显式使用 $multi-agent-team 时触发。不适用于单文件小修改或纯咨询。
+description: 用户要求用 multi-agent-team-skill 初始化、升级、检查项目，或需要受控多 Agent 并行、长期领域任务、队列、心跳、Token 与失败恢复时触发。普通单文件修改和纯咨询不触发。
 metadata:
-  version: "1.0.1"
+  version: "2.0.0"
 ---
 
-# 受控多智能体团队
+# Multi-Agent Team v2
 
-主任务是唯一控制面；按评分在“主任务直接做 / 一次性子智能体 / 长期任务”中选择。长期任务可派生一次性子智能体，但不得再创建长期任务。
+主任务默认是唯一 `control-plane-only` 控制面：只做只读判断、拆分、派发、监控、验收、汇报和受管调度状态写入，不写生产代码。
 
-| 目标状态 | 路由 | 必须读取/执行 |
-|---|---|---|
-| 空目录或新项目 | `new` | `references/workflow-new-team.md` + `scripts/team_init.py` |
-| 旧项目未部署团队 | `existing-project` | `references/workflow-existing-project.md` + `team_init.py` |
-| 受管 v1 团队 | `existing-team:v1` | `references/schema-migration.md` + `team_upgrade.py` |
-| 未知/非受管团队 | `existing-team:audit` | `workflow-existing-team.md` + `team_audit.py` |
-| 规划长期任务 | `orchestrate` | `runtime-orchestration.md` + `thread_orchestrator.py plan` |
-| 健康/异常/Token | `runtime-health` | `health-anomaly-token.md` + `thread_orchestrator.py health` |
-
-用户给出路径后必须先运行：
+用户给出项目路径后，无需询问 orchestrator 等内部术语，必须先执行：
 
 ```bash
 python3 scripts/inspect_team.py --project <项目根目录>
 ```
 
-## 默认策略
+| inspect 结果 | 动作 |
+|---|---|
+| `new` / `existing-project` | 读对应 workflow，dry-run `team_init.py` |
+| `existing-team:v1` / `v2-upgrade` | 读 `schema-migration.md`，dry-run `team_upgrade.py` |
+| `existing-team:audit` | 运行只读 `team_audit.py`，未知 schema 失败关闭 |
+| `existing-team:v2` | 运行 `team_doctor.py` 与 orchestrator `health` |
 
-- `recommend`：默认模式，评分达标只推荐新长期任务。
-- `controlled-auto`：用户显式开启后，主任务可调用客户端任务工具创建，再用 `register --apply` 记录返回 ID。
-- 运行时脚本本身不伪造任务 ID，不绕过客户端授权，不自动执行外部发布、生产写入或凭据变更。
-- 默认使用当前 Codex 的 Luna/Terra/Sol 三档模型；订阅不支持或需自定义时，用 `--model-fast/--model-standard/--model-advanced` 安全覆盖，并以运行态冒烟确认可用性。
-- 构造 `thread_orchestrator.py plan` 的任务 JSON 前，先读 `references/runtime-orchestration.md` 的“任务输入字段表”和 `examples/task-input.example.json`，字段名以该表为准（如 `domain_key`/`expected_days`，勿用别名）。
+用户明确要求“升级并开启受控自动”时，Skill 可为受管 v2 团队选择 `team_upgrade.py --thread-mode controlled-auto`；这不替代任何外部动作审批。
 
-## 生产级约束
+## 双通道
 
-- 初始化/升级默认 dry-run；未知 schema 失败关闭；不覆盖业务文件、自定义配置或角色。
-- 每个派发包含目标、所有权、验证、停止条件；同时写入最多 2，路径互斥。
-- 同 `domain_key` 只有一个活跃长期任务；写入使用锁、revision 与幂等键。
-- reviewer 始终为全新只读实例；完成状态必须有证据路径。
-- Token 70% 压缩、85% 冻结范围、100% 停止；同因两次失败后升级而非盲目重试。
-- 子任务回传不超过 10 行；完整 diff、日志和测试落盘，主任务回传阶段进度。
+- fast lane：普通任务直接派一次性 Agent，完成即释放；轻任务用最小派发包，默认 `on-failure` review。
+- project lane：复杂、持续、独立领域任务创建或复用长期任务；长期任务只能再派一次性 Agent，禁止更深嵌套。
+- 项目 `[agents].max_depth=1`；registry 深度 2 是主控制面代 project task 派发 one-shot 的受管关系，不是 Agent 递归嵌套。
+- 高风险任务始终使用全新只读 reviewer；主任务不复用实现上下文做审查。
+
+编排前读 `references/runtime-orchestration.md`，使用 `plan -> enqueue -> dispatch`。队列不限，总运行并发默认 6、写实例 2；依赖、所有权或容量不满足时保持排队。
+
+## 运行规则
+
+- Luna/Terra/Sol 对应 fast/standard/advanced；模型重配置遇到活动/可恢复实例必须输出 `replacement_required`，不得原地改模型。
+- 同因失败两次：保存 handoff，停止旧实例，用 `replace` 创建更高档新实例；禁止原地换脑。
+- 心跳、超时、依赖、状态、证据、Token 与文件锁写入 `.codex/team/`；默认 dry-run。
+- 外部发布、生产写入、付费动作和凭据变更始终单独取得明确批准。
 
 ## 完成闸
 
-执行 `team_doctor.py` + `thread_orchestrator.py health` + 项目自身测试 + 全新 explorer/reviewer 运行态冒烟。修改 Skill 本身后必须运行 `python3 scripts/health_check.py --deep`。
+执行 `team_doctor.py`、`thread_orchestrator.py health`、项目测试和高风险 fresh reviewer；用 `runtime_smoke.py` 记录真实客户端证据，无法运行时保持 pending/partial。修改 Skill 后运行 `python3 scripts/health_check.py --deep`、官方 validator（若存在）及 `python3 scripts/check_readme_links.py`。

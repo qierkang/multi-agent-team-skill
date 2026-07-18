@@ -1,12 +1,24 @@
 {
   "schema_version": "2.0",
-  "skill_version": "1.0.1",
+  "skill_version": "2.0.0",
+  "control_plane_mode": "control-plane-only",
   "thread_creation_mode": "recommend",
   "creation_threshold": 7,
-  "subagent_threshold": 4,
-  "max_active_long_threads": 5,
+  "max_concurrency_total": 6,
   "max_concurrent_writers": 2,
+  "queue_capacity": "unbounded",
   "stale_heartbeat_minutes": 30,
+  "timeout_policy": {
+    "fast_lane_seconds": 1800,
+    "project_lane_seconds": 86400
+  },
+  "dispatch_policy": {
+    "light_packet": "minimal",
+    "default_packet": "full",
+    "light_review": "on-failure",
+    "high_risk_review": "always-fresh-reviewer",
+    "max_nesting_depth": 2
+  },
   "model_tiers": {
     "fast": "gpt-5.6-luna",
     "standard": "gpt-5.6-terra",

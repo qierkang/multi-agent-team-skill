@@ -1,5 +1,22 @@
 # 变更记录
 
+## 2.0.0 - 2026-07-18
+
+- 主任务默认 `control-plane-only`，planner 不再允许主任务直接修改生产代码。
+- 增加 fast lane / project lane、无限队列、依赖、层级、总并发 6 与写并发 2。
+- 轻任务使用最小派发包和 on-failure review；high/critical 始终 fresh reviewer。
+- 增加心跳、超时、同因失败指纹、handoff 与 Luna/Terra/Sol 新实例升级。
+- inspect 自动细分当前团队与待升级 v2 团队；用户无需提供内部编排术语。
+- schema 1.0 与 Skill 1.x 均可事务、可备份、确定性升级到 Skill 2.0.0。
+- 新增 inspect、队列、依赖、嵌套、替换实例、README 链接和 `PYTHONOPTIMIZE=1` 回归。
+- 审计器兼容旧 `evidence` 与新 `evidence_paths`；health 与 mutation 共用 runtime lock，避免并发写中间态误报 drift。
+- 新增 `runtime_smoke.py`，以真实 explorer/reviewer 证据推进 pending -> partial_done -> runtime_validation_done，并由 doctor 失败关闭校验。
+- 明确 Codex `agents.max_depth=1` 与 registry 受管 depth 2 的语义边界，禁止把跨任务控制层误配为 Agent 递归深度。
+- 模型重配置不再改写活动/可恢复实例；升级器输出 `replacement_required`，模型升级只能通过 handoff 新实例接替。
+- evidence 统一要求项目相对、无 `..`、存在、非空且非 symlink，并由 update、migration、doctor、health 与 runtime smoke 共用校验。
+- 已有 v2 团队可显式事务更新 `--thread-mode controlled-auto`；blocked 恢复重新校验 dispatch、handoff、依赖、所有权和并发门禁。
+- 中英繁文档、references、templates、governance 与验证证据同步升级。
+
 ## 1.0.1 - 2026-07-17
 
 - `team_init.py` 新增 `--model-fast/--model-standard/--model-advanced`，可按订阅覆盖当前 Codex 默认三档模型，并同步角色 TOML 与 `project-state.json`。
@@ -12,6 +29,7 @@
 - 任务 JSON 改为严格字段与类型契约；线程复用只以注册表中的 `domain_key` 为准，不再接受无效的调用方线程 ID。
 - README 注册示例改用 planner 返回模型，并把繁体文档与任务示例纳入健康门禁。
 - GitHub Actions 升级到 Node 24 运行时的 checkout/setup-python v6，并收紧为只读仓库权限。
+- v1 迁移兼容旧快照的 `evidence` 字段，保留完成证据并避免已完成任务被误降级。
 
 ## 1.0.0 - 2026-07-17
 

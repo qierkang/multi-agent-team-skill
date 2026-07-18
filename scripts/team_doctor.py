@@ -24,6 +24,8 @@ from runtime_state import (
     load_json,
     normalize_model_tiers,
     safe_state_path,
+    validate_evidence_path,
+    validate_evidence_paths,
 )
 from team_init import apply_model_tiers
 from thread_orchestrator import derived_runtime_state, ownership_conflicts
@@ -38,13 +40,16 @@ CONTROL_AGENT_KEYS = {"max_threads", "max_depth", "job_max_runtime_seconds"}
 REQUIRED_DOCS = [
     "docs/协作/任务台账.md",
     "docs/协作/任务包模板.md",
+    "docs/协作/最小派发包模板.md",
     "docs/协作/摘要模板.md",
     "docs/协作/状态快照.json",
     "docs/协作/长期线程注册表.md",
     "docs/协作/异常记录.md",
 ]
 ACTIVE_STATES = {"provisioning", "active", "waiting_input", "reviewing", "degraded"}
-ALL_STATES = ACTIVE_STATES | {"completed", "blocked", "cancelled", "archived"}
+ALL_STATES = ACTIVE_STATES | {"queued", "escalation_required", "completed", "blocked", "cancelled", "archived"}
+RUNTIME_SMOKE_STATES = {"pending", "partial_done", "runtime_validation_done"}
+RUNTIME_SMOKE_ROLES = ("explorer", "reviewer")
 
 
 def check(ok: bool, label: str, failures: list[str]) -> None:
@@ -70,6 +75,13 @@ def contains_symlink(root: Path, target: Path) -> bool:
 
 def read_toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def valid_smoke_evidence_path(root: Path, raw: str) -> bool:
+    try:
+        return validate_evidence_path(root, raw) == raw
+    except (OSError, ValueError):
+        return False
 
 
 def git_root(root: Path) -> Path | None:
@@ -111,10 +123,13 @@ def validate_runtime(root: Path, failures: list[str]) -> list[Path]:
 
     policy = payloads.get(PROJECT_STATE, {})
     check(policy.get("skill_version") == SKILL_VERSION, "project state skill version", failures)
+    check(policy.get("control_plane_mode") == "control-plane-only", "control plane is read-only for production code", failures)
     check(policy.get("thread_creation_mode") in {"recommend", "controlled-auto"}, "valid thread creation mode", failures)
     check(policy.get("external_action_policy") == "explicit-user-approval", "external actions require approval", failures)
-    check(policy.get("creation_threshold") == 7 and policy.get("subagent_threshold") == 4, "routing thresholds", failures)
-    check(policy.get("max_active_long_threads") in range(1, 6), "long-thread limit 1..5", failures)
+    check(policy.get("creation_threshold") == 7, "project-lane routing threshold", failures)
+    check(policy.get("max_concurrency_total") == 6, "total concurrency limit is 6", failures)
+    check(policy.get("queue_capacity") == "unbounded", "queue capacity is unbounded", failures)
+    check(policy.get("max_concurrent_writers") == 2, "writer concurrency limit is 2", failures)
     token = policy.get("token_policy", {})
     check(
         isinstance(token, dict)
@@ -135,9 +150,10 @@ def validate_runtime(root: Path, failures: list[str]) -> list[Path]:
     check(len(ids) == len(threads) and all(isinstance(item, str) and item for item in ids), "thread ids present", failures)
     check(len(ids) == len(set(ids)), "thread ids unique", failures)
     active = active_threads({"threads": threads})
-    domains = [item.get("domain_key") for item in active]
+    domains = [item.get("domain_key") for item in active if item.get("lane", "project") == "project"]
     check(all(item.get("status") in ALL_STATES for item in threads if isinstance(item, dict)), "thread statuses valid", failures)
     check(len(domains) == len(set(domains)), "active domain keys unique", failures)
+    check(len(active) <= int(policy.get("max_concurrency_total", 0) or 0), "active executions within total limit", failures)
     ownership = [path for item in active for path in item.get("owned_paths", [])]
     check(len(ownership) == len(set(ownership)), "active path ownership unique", failures)
     overlaps = [
@@ -154,6 +170,30 @@ def validate_runtime(root: Path, failures: list[str]) -> list[Path]:
     check(
         all(item.get("status") != "completed" or item.get("evidence_paths") for item in threads if isinstance(item, dict)),
         "completed threads contain evidence",
+        failures,
+    )
+    evidence_valid = True
+    for item in threads:
+        if not isinstance(item, dict):
+            continue
+        try:
+            values = item.get("evidence_paths", [])
+            if validate_evidence_paths(root, values) != values:
+                raise ValueError("evidence_paths must be canonical and unique")
+        except (OSError, ValueError) as exc:
+            print(f"FAIL thread evidence {item.get('id', 'unknown')}: {exc}")
+            evidence_valid = False
+    check(evidence_valid, "thread evidence paths are safe, real, non-empty files", failures)
+    known_ids = set(ids)
+    check(
+        all(
+            isinstance(item.get("dependencies", []), list)
+            and set(item.get("dependencies", [])) <= known_ids
+            and int(item.get("depth", 1) or 1) in {1, 2}
+            for item in threads
+            if isinstance(item, dict)
+        ),
+        "dependencies and nesting depth valid",
         failures,
     )
     if THREAD_REGISTRY in payloads and OWNERSHIP_LOCKS in payloads and BUDGET_STATE in payloads:
@@ -199,7 +239,45 @@ def main() -> int:
     check(manifest.get("skill") == "multi-agent-team", "manifest skill=multi-agent-team", failures)
     check(manifest.get("schema_version") == SCHEMA_VERSION, f"manifest schema={SCHEMA_VERSION}", failures)
     check(manifest.get("skill_version") == SKILL_VERSION, f"manifest skill version={SKILL_VERSION}", failures)
-    check(manifest.get("orchestration", {}).get("control_plane") == "main-task-only", "main task is control plane", failures)
+    orchestration = manifest.get("orchestration", {})
+    check(orchestration.get("control_plane") == "control-plane-only", "main task is control-plane-only", failures)
+    check(orchestration.get("lanes") == ["fast", "project"], "manifest declares fast/project lanes", failures)
+    smoke_status = manifest.get("runtime_smoke_test", "pending")
+    raw_smoke_evidence = manifest.get(
+        "runtime_smoke_evidence", {role: [] for role in RUNTIME_SMOKE_ROLES}
+    )
+    smoke_shape_valid = (
+        isinstance(raw_smoke_evidence, dict)
+        and not (set(raw_smoke_evidence) - set(RUNTIME_SMOKE_ROLES))
+        and all(
+            isinstance(raw_smoke_evidence.get(role, []), list)
+            and all(isinstance(item, str) for item in raw_smoke_evidence.get(role, []))
+            for role in RUNTIME_SMOKE_ROLES
+        )
+    )
+    smoke_evidence = (
+        {role: raw_smoke_evidence.get(role, []) for role in RUNTIME_SMOKE_ROLES}
+        if smoke_shape_valid
+        else {role: [] for role in RUNTIME_SMOKE_ROLES}
+    )
+    expected_smoke_status = (
+        "runtime_validation_done"
+        if all(smoke_evidence[role] for role in RUNTIME_SMOKE_ROLES)
+        else "partial_done"
+        if any(smoke_evidence[role] for role in RUNTIME_SMOKE_ROLES)
+        else "pending"
+    )
+    check(smoke_shape_valid, "runtime smoke evidence shape is valid", failures)
+    check(
+        smoke_status in RUNTIME_SMOKE_STATES and smoke_status == expected_smoke_status,
+        f"runtime smoke status {smoke_status} is valid",
+        failures,
+    )
+    check(
+        all(valid_smoke_evidence_path(root, item) for values in smoke_evidence.values() for item in values),
+        "runtime smoke evidence files exist and are non-empty",
+        failures,
+    )
 
     features = config.get("features", {})
     agents = config.get("agents", {})
@@ -217,6 +295,11 @@ def main() -> int:
     # 角色 TOML 除 model 行外仍必须与已安装模板逐字节一致（防篡改）。
     project_state = load_json(safe_state_path(root, PROJECT_STATE)) if (root / PROJECT_STATE).exists() else {}
     project_tiers = normalize_model_tiers(project_state.get("model_tiers"))
+    check(
+        orchestration.get("thread_creation_mode") == project_state.get("thread_creation_mode"),
+        "manifest and project state thread creation modes match",
+        failures,
+    )
     for role in roles:
         path = root / f".codex/agents/{role}.toml"
         canonical = CANONICAL_ROLES / f"{role}.toml"
@@ -274,7 +357,12 @@ def main() -> int:
         print(f"FAILURES={len(failures)}")
         print("STATE=static_validation_failed")
         return 1
-    print("STATIC_VALIDATION=passed; runtime explorer/reviewer smoke test still required")
+    if smoke_status == "runtime_validation_done":
+        print("STATIC_VALIDATION=passed; runtime explorer/reviewer evidence recorded")
+    elif smoke_status == "partial_done":
+        print("STATIC_VALIDATION=passed; runtime smoke partial, missing role evidence still required")
+    else:
+        print("STATIC_VALIDATION=passed; runtime explorer/reviewer smoke test still required")
     print("STATE=static_validation_done")
     return 0
 

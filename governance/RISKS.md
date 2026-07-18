@@ -36,8 +36,8 @@
 
 - 风险：`gpt-5.6-luna/terra/sol` 是当前 Codex 默认三档模型，但不同订阅或未来版本的可用范围可能不同。
 - 应对：
-  - `team_init.py` 和 `team_upgrade.py` 支持 `--model-fast/--model-standard/--model-advanced`，同步角色 TOML、项目策略和已登记任务模型。
-  - 模型 ID 经过白名单校验和 TOML 安全序列化；v2 重配置先 dry-run、备份并事务写入，旧档位有歧义时拒绝猜测。
+  - `team_init.py` 和 `team_upgrade.py` 支持 `--model-fast/--model-standard/--model-advanced`；只有无活动实例或仅终态记录时才同步角色 TOML、项目策略和安全可迁移记录。
+  - 模型 ID 经过白名单校验和 TOML 安全序列化；v2 重配置先 dry-run、备份并事务写入，活动/可恢复实例输出 `replacement_required` 且零写入，旧档位有歧义时拒绝猜测。
   - 模型映射集中在项目策略与角色目录；安装后必须做真实 explorer/reviewer 冒烟，不以静态校验代替。
   - 回归固定校验默认安装、自定义注入、恶意输入拒绝和 v2 重配置链路。
 
@@ -53,4 +53,18 @@
 | C-006 | 模板混放在 assets 导致职责不清和引用漂移 | 模板统一迁入 `templates/`，新增健康检查阻止旧路径回归 |
 | C-007 | 只验证目标项目、不验证 Skill 包自身 | 新增快速/深度 `health_check.py` 与统一 install doctor |
 | C-008 | 状态快照使用 `tasks`、审计器期待 `threads` | v2 schema 统一为 `threads`，升级器保留 v1 数据 |
-| C-009 | 所有权锁或预算派生状态漂移 | health 强制比对 registry revision，`reconcile` 可恢复 |
+| C-009 | 所有权锁或预算派生状态漂移 | health 在 runtime lock 下强制比对 registry revision，`reconcile` 可恢复且并发写中间态不误报 |
+| C-010 | v1 `evidence` 被审计器误判为缺证据 | 审计同时归一 `evidence` 与 `evidence_paths`，确定性回归覆盖两种字段 |
+| C-011 | runtime smoke 永久 pending 或被占位证据伪造完成 | 受控命令、角色分栏、非空真实文件门禁、状态迁移和 doctor 回归闭环 |
+| C-012 | 模型重配置原地改写活动实例 | upgrade 持 runtime lock；活动/可恢复实例零写入并输出 replacement_required，升级只经新实例 handoff/replace |
+| C-013 | 假、越界或 symlink evidence 通过完成闸 | audit、update、migration、doctor、health、runtime smoke 共用项目内真实非空普通文件校验 |
+| C-014 | v2 `--thread-mode controlled-auto` 被静默忽略 | 显式模式更新同步 manifest/project-state，doctor 一致性校验和 project dispatch 回归覆盖 |
+| C-015 | queued -> blocked -> active 绕过派发门禁 | blocked 恢复强制 instance/start/handoff、依赖、父任务、模式、domain、所有权与容量复验 |
+
+## v2 开放风险
+
+- 客户端真实 Agent 创建、模型订阅和沙箱权限无法由确定性脚本完全证明；每个目标项目仍需运行态冒烟。
+- 冒烟命令可验证证据文件存在、非空和角色覆盖，但无法从本地文件内容独立证明远端客户端真实性；操作者仍必须保存真实输出，无法运行时保持 pending/partial。
+- 无限队列不会丢任务，但长期积压需外部监控和人工优先级治理；health 当前报告数量，不自动删除。
+- 超时检测依赖本机 UTC 时间与心跳写入；时钟漂移或客户端未上报时会降级/失败关闭。
+- Sol 同因失败两次后无更高自动档位，只能阻塞并请求决策。

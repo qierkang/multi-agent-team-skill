@@ -1,22 +1,19 @@
-# 健康、异常与 Token 治理
+# 健康、异常、超时与 Token
 
-## 三层健康检查
+`thread_orchestrator.py health` 检查：schema、control-plane-only、总并发 6、写并发 2、domain、依赖、层级、instance ID、所有权、心跳、超时、模型、证据、Token 和派生状态漂移。
 
-1. 静态：配置、Schema、角色、模型、沙箱、符号链接和 Git 可追踪性。
-2. 运行态：线程存在性、领域唯一性、心跳、状态迁移、Token、证据和文件所有权。
-3. 业务态：目标项目 build、lint、typecheck、测试、API/E2E、部署和数据库闭环。
+## 异常处置
 
-## 异常策略
+1. 第一次同因失败：记录 fingerprint、现场和 handoff，允许同实例一次受控重试。
+2. 第二次同因失败：状态转 `escalation_required`，旧实例不换脑且释放槽位。
+3. `replace` 必须使用新 instance ID、保存的 handoff 和下一档模型。
+4. Sol 无更高档位时阻塞并请求决策；禁止盲目重试。
+5. stale heartbeat 或 timeout 不等同完成；先保存现场，再决定恢复或替换。
 
-- 创建失败只自动重试一次；仍失败则回主线程并记录 journal。
-- 同因连续两次失败后冻结现场，升级 debugger/architect，不继续堆叠上下文。
-- 心跳过期标记 degraded；缺乏运行时证据时不得自动判定 completed。
-- reviewer 不通过时返回实现线程修复；外部副作用必须使用幂等键或人工批准。
-- 注册表写入使用临时文件、fsync 和原子替换；未知 Schema fail closed。
+## Token
 
-## Token 与保留
+- 70%：压缩上下文，只保留摘要、决策和证据索引。
+- 85%：冻结扩展范围，只完成当前验收。
+- 100%：保存 handoff 并停止。
 
-- 70%：阶段摘要和上下文压缩。
-- 85%：冻结范围，只允许完成当前验收闭环。
-- 100%：保存现场并停止。
-- 最近 30 天保留完整状态，31-90 天保留摘要，超过 90 天只保留决策与证据索引；压缩默认 dry-run。
+派生锁、预算或状态快照漂移先 dry-run `reconcile`，确认后 `--apply`。外部动作仍需独立明确批准。

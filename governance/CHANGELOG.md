@@ -1,5 +1,16 @@
 # 变更记录
 
+## 2.0.0 - 2026-07-18
+
+- 确立 control-plane-only 与 fast/project 双通道。
+- 队列与并发解耦，增加依赖、handoff、超时、失败替换和分级 review。
+- 将优化模式回归、README 链接与生产评分纳入完成闸。
+- 补齐 legacy evidence 审计、health 锁一致快照和 runtime smoke 状态/证据闭环回归。
+- 固化 `agents.max_depth=1`，将 registry depth 2 定义为主控制面管理的跨任务关系。
+- 修复活动实例被模型重配置原地改写；改为 runtime lock 下零写入 `replacement_required`。
+- 统一 update/migration/doctor/health/runtime smoke 的真实 evidence 路径校验，并补绝对、越界、缺失、空文件与 symlink 回归。
+- 使已有 v2 团队的显式 `--thread-mode controlled-auto` 事务生效，并收紧 blocked 恢复的完整 active admission 门禁。
+
 ## 1.0.1 - 2026-07-17
 
 - 增加安全模型覆盖和 v2 事务重配置，模型 ID 注入拒绝引号、换行及控制字符。

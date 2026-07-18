@@ -16,6 +16,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from runtime_state import SKILL_VERSION
+
 
 CONTROL_AGENT_KEYS = {"max_threads", "max_depth", "job_max_runtime_seconds"}
 TEAM_MARKERS = (
@@ -121,34 +123,48 @@ def inspect(root: Path) -> dict[str, Any]:
     config = read_config(root / ".codex" / "config.toml")
     signals = team_signals(root, config)
     git_root, dirty = inspect_git(root)
+    installed_skill_version = "none"
     if signals:
         route = "existing-team"
         manifest_signal = next((item for item in signals if item.startswith("team_manifest:")), "")
         schema_version = manifest_signal.split(":", 1)[1] if ":" in manifest_signal else "unknown"
         if manifest_signal == "team_manifest:1.0":
+            manifest_payload = json.loads((root / ".codex" / "team-bootstrap.json").read_text(encoding="utf-8"))
+            installed_skill_version = str(manifest_payload.get("skill_version", "unknown"))
             route_detail = "existing-team:v1"
             next_action = "先 dry-run team_upgrade.py；确认备份与 v1->v2 迁移计划后再 --apply"
         elif manifest_signal == "team_manifest:2.0":
-            route_detail = "existing-team:v2"
-            next_action = "运行 team_doctor.py 和 thread_orchestrator.py health；异常时先只读审计"
+            manifest_payload = json.loads((root / ".codex" / "team-bootstrap.json").read_text(encoding="utf-8"))
+            installed_skill_version = str(manifest_payload.get("skill_version", "unknown"))
+            if installed_skill_version != SKILL_VERSION:
+                route_detail = "existing-team:v2-upgrade"
+                next_action = "先 dry-run team_upgrade.py，确定迁移受管协作文件到 Skill 2.0.0"
+            else:
+                route_detail = "existing-team:v2"
+                next_action = "运行 team_doctor.py 和 thread_orchestrator.py health；异常时先只读审计"
         else:
+            installed_skill_version = "unknown"
             route_detail = "existing-team:audit"
             next_action = "运行 team_audit.py 生成只读迁移报告；未知 schema 不得自动覆盖"
     elif has_business_content(root):
         route = "existing-project"
         route_detail = "existing-project"
         schema_version = "none"
+        installed_skill_version = "none"
         next_action = "先 dry-run team_init.py，确认追加内容、冲突和备份计划后再 --apply"
     else:
         route = "new"
         route_detail = "new"
         schema_version = "none"
+        installed_skill_version = "none"
         next_action = "先 dry-run team_init.py，确认角色档案后再 --apply"
     return {
         "project": str(root),
         "route": route,
         "route_detail": route_detail,
         "schema_version": schema_version,
+        "installed_skill_version": installed_skill_version,
+        "target_skill_version": SKILL_VERSION,
         "team_signals": signals,
         "git_root": str(git_root) if git_root else None,
         "dirty_count": len(dirty),
@@ -172,6 +188,8 @@ def main() -> int:
             print(f"ROUTE={result['route']}")
             print(f"ROUTE_DETAIL={result['route_detail']}")
             print(f"SCHEMA_VERSION={result['schema_version']}")
+            print(f"INSTALLED_SKILL_VERSION={result['installed_skill_version']}")
+            print(f"TARGET_SKILL_VERSION={result['target_skill_version']}")
             print(f"TEAM_SIGNALS={','.join(result['team_signals']) or 'none'}")
             print(f"GIT_ROOT={result['git_root'] or 'none'}")
             print(f"DIRTY_COUNT={result['dirty_count']}")

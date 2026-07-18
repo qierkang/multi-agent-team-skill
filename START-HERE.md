@@ -1,21 +1,33 @@
-# Multi-Agent Team Skill Start Here
+# Multi-Agent Team Skill v2 Start Here
 
-## 快速路由
+## 用户入口
 
-1. 先读 `SKILL.md`。
-2. 对目标路径运行 `scripts/inspect_team.py`。
-3. `ROUTE=new`：读取 `references/workflow-new-team.md`。
-4. `ROUTE=existing-project`：读取 `references/workflow-existing-project.md`。
-5. `ROUTE=existing-team` 且 manifest schema=1.0：读取 `references/schema-migration.md`，先 dry-run `team_upgrade.py`。
-6. 未知/非受管团队：读取 `workflow-existing-team.md` 与 `migration-rules.md`，只读审计。
-7. 需要长期任务时读 `runtime-orchestration.md` 与 `long-thread-policy.md`。
-8. 健康、异常或 Token 问题读 `health-anomaly-token.md`。
-9. 验收时读 `completion-gate.md`；修改 Skill 后运行 `python3 scripts/health_check.py --deep`。
+用户只需说“用 multi-agent-team-skill 初始化 / 升级 / 检查这个项目”并提供路径。不要要求用户选择 orchestrator、lane 或 schema。
 
-## 核心承诺
+1. 读 `SKILL.md`。
+2. 只读运行 `python3 scripts/inspect_team.py --project <path>`。
+3. 按 `ROUTE_DETAIL` 读取 `references/INDEX.md` 中对应 workflow。
+4. 初始化或升级先 dry-run；只有用户明确要求落地时加 `--apply`。
+5. 未知团队先审计，禁止覆盖现有角色、配置、状态或业务文件。
 
-- 新项目按需部署，不机械拉起全部角色。
-- 已有项目非侵入升级，不改业务结构和技术栈。
-- 受管 v1 可事务升级；未知 schema 先审计且失败关闭。
-- 默认只推荐长期任务；显式开启 `controlled-auto` 后主任务才能创建。
-- 所有完成结论都必须有可执行回归和运行态证据。
+## 执行入口
+
+| 需求 | 命令 |
+|---|---|
+| 初始化 | `team_init.py` |
+| 受管升级 | `team_upgrade.py` |
+| 未知团队审计 | `team_audit.py` |
+| 静态检查 | `team_doctor.py` |
+| 任务规划与队列 | `thread_orchestrator.py plan/enqueue/dispatch` |
+| 心跳、失败、替换 | `thread_orchestrator.py update/fail/replace/health` |
+| 客户端冒烟证据 | `runtime_smoke.py`（pending -> partial_done -> runtime_validation_done） |
+| Skill 完整验证 | `health_check.py --deep` |
+
+## 不变量
+
+- 主任务 `control-plane-only`，不写生产代码。
+- fast lane 一次性 Agent；project lane 的 one-shot 由主控制面代为派发；Codex `agents.max_depth=1`，registry 受管关系最多 depth 2。
+- 队列不限、总并发 6、写并发 2、所有权互斥。
+- 轻任务最小包 + on-failure review；高风险 fresh reviewer。
+- 运行中不换脑；同因两次失败后以 handoff 创建更高档新实例。
+- 默认 dry-run；外部高风险动作独立审批。

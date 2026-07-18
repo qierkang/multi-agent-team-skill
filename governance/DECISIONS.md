@@ -47,3 +47,27 @@
 ## DEC-0012：Token 资源门禁是运行时合同
 
 70% 要求压缩，85% 冻结扩展范围，100% 保存现场并停止。子任务摘要不超过 10 行，详细产物落盘。
+
+## DEC-0013：主任务默认 control-plane-only
+
+主任务不实现生产代码，只负责只读判断、拆分、派发、监控、验收、汇报和受管调度状态。所有生产实现进入 Agent 实例，避免控制面被执行上下文污染。
+
+## DEC-0014：队列无限但运行容量受控
+
+任务可无限排队，活跃执行统一受总并发 6、写并发 2、依赖和路径所有权约束。容量不足只排队，不丢任务，也不以长期任务数量代替总并发。
+
+## DEC-0015：双通道与有限层级
+
+普通任务进入 fast lane 一次性 Agent；复杂持续工作进入 project lane 长期领域任务。Codex `agents.max_depth=1` 禁止 Agent 递归创建 Agent；registry 的最大 depth 2 是主控制面代 project task 派发一次性 Agent 的跨任务关系，不是 Codex 嵌套配置。
+
+## DEC-0016：失败升级必须换实例
+
+运行中实例不得换模型。同因连续失败两次后保存 handoff，旧实例停止，新实例按 Luna -> Terra -> Sol 升级；Sol 再失败则阻塞。
+
+## DEC-0017：运行态冒烟由真实双角色证据推进
+
+安装和升级只写 `pending`。`runtime_smoke.py` 默认 dry-run，仅接受项目内已存在、非空、非 symlink 的 explorer/reviewer 证据；单侧为 `partial_done`，两侧齐全才为 `runtime_validation_done`，doctor 持续校验状态与证据一致性。
+
+## DEC-0018：health 与 mutation 共用一致性锁
+
+health 必须在 mutation 使用的同一 runtime lock 下读取 registry、ownership locks、budget 和人读快照。这样仍能检测静态 drift，但不会把正常多文件写入的中间窗口误报为 drift。

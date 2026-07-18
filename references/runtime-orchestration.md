@@ -1,49 +1,71 @@
-# 运行时长期线程编排
+# v2 运行时编排契约
 
-## 控制面边界
+## 控制面
 
-主 Codex 任务是唯一长期线程控制面。Python 脚本只生成确定性计划、维护注册表和执行健康检查，不直接调用客户端线程 API。
+主任务默认 `control-plane-only`：可以只读判断、拆分、排队、派发、监控、验收、汇报和写受管调度状态，但不得修改生产代码。planner 永不返回“主任务直接实现”。
 
-## 任务输入字段表（`plan --task-json` 的唯一契约）
+## 任务输入字段
 
-完整可运行示例见 `examples/task-input.example.json`。字段名以本表为准，不要臆造别名（例如用 `domain` 代替 `domain_key`、`est_days` 代替 `expected_days` 会被拒绝或漏算评分）。
+| 字段 | 类型 | 必填 | 约束 |
+|---|---|---:|---|
+| `domain_key` | string | 是 | 非空；project lane 活跃时唯一 |
+| `title` | string | 是 | 非空 |
+| `owned_paths` | string[] | 否 | 项目相对路径，禁止绝对路径和 `..` |
+| `expected_days` | number | 否 | 非负有限数；`>1` 记 +2 |
+| `task_packages` | integer | 否 | 非负；`>=3` 记 +2 |
+| `independent_boundary` | boolean | 否 | +2 |
+| `recurring` | boolean | 否 | +2 |
+| `independent_release` | boolean | 否 | +1 |
+| `decision_retention` | boolean | 否 | +1 |
+| `parallelizable` | boolean | 否 | +1 |
+| `task_type` | enum | 否 | implementation/exploration/chore/docs/research/architecture/security/review/migration |
+| `risk` | enum | 否 | low/medium/high/critical |
+| `attempts` | integer | 否 | 非负 |
+| `dependencies` | string[] | 否 | 必须指向已登记任务，禁止循环 |
+| `parent_thread_id` | string | 否 | 仅 project lane 活跃任务可作为父任务 |
+| `timeout_seconds` | integer | 否 | 正整数 |
 
-| 字段 | 类型 | 必填 | 作用 |
-|---|---|:---:|---|
-| `domain_key` | string | 是 | 稳定领域唯一键，推荐 `项目标识::领域标识`；同键只允许一个活跃长期线程 |
-| `title` | string | 是 | 人类可读任务名 |
-| `owned_paths` | string[] | 否 | 需要独占写入的项目相对路径；用于所有权冲突检测，禁止绝对路径或 `..` |
-| `expected_days` | number | 否 | 预计持续天数，`>1` 记 +2 分 |
-| `task_packages` | number | 否 | 预计任务包数量，`>=3` 记 +2 分 |
-| `independent_boundary` | bool | 否 | 是否有独立业务或目录边界，记 +2 分 |
-| `recurring` | bool | 否 | 是否需要持续维护，记 +2 分 |
-| `independent_release` | bool | 否 | 是否独立测试或发布，记 +1 分 |
-| `decision_retention` | bool | 否 | 是否需要长期保存决策，记 +1 分 |
-| `parallelizable` | bool | 否 | 是否可与其他领域并行，记 +1 分 |
-| `task_type` | string | 否 | `implementation`/`exploration`/`chore`/`docs`/`research`/`architecture`/`security`/`review`/`migration`，影响模型档位 |
-| `risk` | string | 否 | `low`/`medium`/`high`/`critical`，`high`/`critical` 升到 advanced 档 |
-| `attempts` | number | 否 | 已失败尝试次数，`>=2` 升到 advanced 档 |
+未知字段失败关闭。示例见 `examples/task-input.example.json`。
 
-评分阈值：`0-3` 主线程处理，`4-6` 一次性子智能体，`>=7`（`creation_threshold`）创建或复用长期线程。模型档位由 `task_type`/`risk`/`attempts` 决定，映射到项目 `project-state.json` 的 `model_tiers`（安装时可用 `team_init.py --model-fast/--model-standard/--model-advanced` 覆盖为真实模型 ID）。
+## Lane 与派发策略
 
-## 标准流程
+评分达到 7 进入 project lane，否则进入 fast lane。轻任务是 low risk、预计不超过 0.5 天、最多一个任务包、无独立发布和长期决策保留的 fast 任务。
 
-1. 将需求整理为任务 JSON（按上表字段），运行 `thread_orchestrator.py plan`。
-2. `handle_in_main`：主任务本地执行；`use_subagents`：当前任务内使用一次性角色实例。
-3. `recommend_thread`：当前为推荐模式，不创建；`create_thread`：主任务调用客户端，成功后立即 `register --apply`。
-4. `reuse_thread`：向 planner 根据注册表和 `domain_key` 返回的 `existing_thread_id` 发送任务包；调用方不得自行指定线程 ID。
-5. `queue_or_reuse` / `queue_writer_capacity`：活跃任务或写并发已满，先收口、复用或排队。
-6. `blocked_ownership_conflict`：路径所有权冲突，禁止派发。
-7. 使用客户端 `wait_threads` 读取里程碑，不按每条 commentary 高频轮询。
-8. 收到阶段结果后执行 `update --apply`，并向用户回传不超过 10 行摘要和证据路径。
-9. `completed` 必须有证据；归档默认人工确认。
+| 结果 | 控制面动作 |
+|---|---|
+| `dispatch_fast_agent` | 派一次性 Agent；轻任务 minimal packet + on-failure review |
+| `create_project_thread` | controlled-auto 下入队并创建长期任务，再绑定客户端 ID |
+| `recommend_project_thread` | recommend 模式只推荐，不创建 |
+| `reuse_project_thread` | 按 registry 的同 `domain_key` 活跃长期任务复用 |
+| `queue_*_capacity` | 总并发 6 已满，保持排队 |
+| `queue_*_writer` | 写并发 2 已满，保持排队 |
+| `queue_*_ownership` | 路径祖先/子路径冲突，保持排队 |
 
-## 创建授权
+队列数量不限。高/critical 风险的 `review_policy` 始终为 `always-fresh-reviewer`。
 
-- `recommend`：只建议创建，不执行客户端创建动作。
-- `controlled-auto`：用户在初始化或升级时显式授权主任务按策略自动创建用户可见长期线程。
-- 两种模式都不能绕过发布、生产写入、付费动作和凭据修改的独立批准门禁。
+## 状态与命令
 
-## 模型与升级
+`queued -> active -> waiting_input/reviewing/degraded -> completed/blocked/cancelled -> archived`
 
-规划器输出 fast/standard/advanced 及具体模型。运行中的线程不换模型；连续两次同因失败或风险升级时，保存摘要、diff、测试和证据，再创建高档位替代线程。
+同因失败两次进入 `escalation_required`；Sol 无更高档位时进入 `blocked`。
+`blocked -> active` 不是通用旁路：必须已有真实 dispatch instance/start metadata，提供存在且非空的 handoff，并重新通过依赖、父任务、controlled-auto、domain、所有权、总并发和写并发门禁。从未 dispatch 的 `queued -> blocked` 任务不得恢复为 active。
+
+```bash
+python3 scripts/thread_orchestrator.py plan --project <path> --task-json task.json
+python3 scripts/thread_orchestrator.py enqueue --project <path> --task-json task.json --task-id TASK-001 --apply
+python3 scripts/thread_orchestrator.py dispatch --project <path> --task-id TASK-001 --instance-id <id> --apply
+python3 scripts/thread_orchestrator.py update --project <path> --thread-id TASK-001 --stage verified --evidence artifacts/test.log --apply
+python3 scripts/thread_orchestrator.py fail --project <path> --task-id TASK-001 --fingerprint same-cause --handoff artifacts/handoff.md --apply
+python3 scripts/thread_orchestrator.py replace --project <path> --task-id TASK-001 --new-instance-id <new-id> --new-model <required-model> --handoff artifacts/handoff.md --apply
+```
+
+除只读 `plan`/`health` 外，状态命令默认 dry-run，写入需 `--apply`。`register` 保留为旧客户端直接登记 project task 的兼容入口。
+
+## 并发、层级和完成
+
+- 活跃执行总数最多 6；写实例最多 2。
+- Codex 项目配置保持 `agents.max_depth=1`，禁止任何 Agent 自行递归创建 Agent。
+- registry 中 main -> fast 为 depth 1；main -> project -> one-shot 为受管 depth 2。depth 2 的 one-shot 由主控制面代 project task 创建/绑定，不代表把 Codex `max_depth` 设为 2。
+- dispatch 前依赖必须 completed，所有权和容量必须可用。
+- 运行中不改模型；replace 必须使用新 instance ID 和 planner 要求的更高档模型。
+- completed 的每个证据路径必须是项目相对、无 `..`、已存在、非空、非 symlink 的普通文件；audit、update、migration、doctor、health 与 runtime smoke 使用同一校验口径。终态自动释放活跃锁。

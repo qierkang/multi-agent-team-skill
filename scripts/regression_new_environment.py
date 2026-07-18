@@ -15,6 +15,7 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 INSPECT = SKILL_ROOT / "scripts" / "inspect_team.py"
 INIT = SKILL_ROOT / "scripts" / "team_init.py"
 DOCTOR = SKILL_ROOT / "scripts" / "team_doctor.py"
+RUNTIME_SMOKE = SKILL_ROOT / "scripts" / "runtime_smoke.py"
 UPGRADE = SKILL_ROOT / "scripts" / "team_upgrade.py"
 MODEL_ARGS = (
     "--model-fast", "gpt-5.3-codex-spark",
@@ -73,19 +74,84 @@ def main() -> int:
         require(manifest["skill"] == "multi-agent-team", "manifest skill mismatch")
         require(manifest["profile"] == "full", "manifest profile mismatch")
         require(manifest["schema_version"] == "2.0", "manifest schema mismatch")
-        require(manifest["skill_version"] == "1.0.1", "manifest skill version mismatch")
+        require(manifest["skill_version"] == "2.0.0", "manifest skill version mismatch")
+        require(manifest["orchestration"]["control_plane"] == "control-plane-only", "control-plane mode mismatch")
+        require(manifest["orchestration"]["lanes"] == ["fast", "project"], "lane manifest mismatch")
         require(manifest["orchestration"]["thread_creation_mode"] == "controlled-auto", "thread mode mismatch")
         require(manifest["runtime_smoke_test"] == "pending", "runtime state must remain pending")
+        require(
+            manifest["runtime_smoke_evidence"] == {"explorer": [], "reviewer": []},
+            "pending runtime smoke must start without fabricated evidence",
+        )
         state_files = sorted((project / ".codex/team").glob("*.json"))
         require(len(state_files) == 5, "v2 runtime state files missing")
         snapshot = json.loads((project / "docs/协作/状态快照.json").read_text(encoding="utf-8"))
         require(snapshot["schema_version"] == "2.0" and "threads" in snapshot and "tasks" not in snapshot, "snapshot was not upgraded to v2")
+        require((project / "docs/协作/最小派发包模板.md").is_file(), "minimal dispatch packet missing")
         passed.append("full profile installs v2 roles, manifest and runtime state")
 
         doctor = run("python3", DOCTOR, "--project", project).stdout
         require("STATE=static_validation_done" in doctor, "doctor did not pass")
         require("manifest skill=multi-agent-team" in doctor, "doctor skipped manifest skill check")
         passed.append("static doctor accepts generated project")
+
+        artifacts = project / "artifacts"
+        artifacts.mkdir()
+        explorer_evidence = artifacts / "explorer-smoke.log"
+        explorer_evidence.write_text("explorer client smoke passed\n", encoding="utf-8")
+        manifest_path = project / ".codex/team-bootstrap.json"
+        before_smoke = manifest_path.read_bytes()
+        smoke_plan = run(
+            "python3", RUNTIME_SMOKE, "--project", project,
+            "--explorer-evidence", "artifacts/explorer-smoke.log",
+        ).stdout
+        require(
+            "STATE=runtime_smoke_plan_ready" in smoke_plan and manifest_path.read_bytes() == before_smoke,
+            "runtime smoke dry-run wrote manifest",
+        )
+        missing_evidence = run(
+            "python3", RUNTIME_SMOKE, "--project", project,
+            "--reviewer-evidence", "artifacts/missing-reviewer.log", "--apply",
+            expected=(2,),
+        )
+        require("evidence file does not exist" in missing_evidence.stderr, "missing smoke evidence was accepted")
+        partial = run(
+            "python3", RUNTIME_SMOKE, "--project", project,
+            "--explorer-evidence", "artifacts/explorer-smoke.log", "--apply",
+        ).stdout
+        partial_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        require(
+            "STATE=runtime_smoke_partial_done" in partial
+            and partial_manifest["runtime_smoke_test"] == "partial_done"
+            and partial_manifest["runtime_smoke_evidence"]["reviewer"] == [],
+            "one-sided client evidence did not remain partial",
+        )
+        partial_doctor = run("python3", DOCTOR, "--project", project).stdout
+        require("runtime smoke status partial_done is valid" in partial_doctor, "doctor rejected honest partial smoke state")
+
+        reviewer_evidence = artifacts / "reviewer-smoke.log"
+        reviewer_evidence.write_text("fresh reviewer client smoke passed\n", encoding="utf-8")
+        validated = run(
+            "python3", RUNTIME_SMOKE, "--project", project,
+            "--reviewer-evidence", "artifacts/reviewer-smoke.log", "--apply",
+        ).stdout
+        validated_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        require(
+            "STATE=runtime_validation_done" in validated
+            and validated_manifest["runtime_smoke_test"] == "runtime_validation_done",
+            "two-sided client evidence did not complete runtime validation",
+        )
+        require(
+            "runtime smoke status runtime_validation_done is valid"
+            in run("python3", DOCTOR, "--project", project).stdout,
+            "doctor rejected evidence-backed runtime validation",
+        )
+        reviewer_evidence.unlink()
+        invalid_doctor = run("python3", DOCTOR, "--project", project, expected=(1,)).stdout
+        require("runtime smoke evidence files exist" in invalid_doctor, "doctor accepted missing recorded smoke evidence")
+        reviewer_evidence.write_text("fresh reviewer client smoke passed\n", encoding="utf-8")
+        require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", project).stdout, "restored smoke evidence did not recover doctor")
+        passed.append("runtime smoke moves pending to partial/done only with real role evidence and doctor enforcement")
 
         unsafe = sandbox / "unsafe-model"
         unsafe.mkdir()

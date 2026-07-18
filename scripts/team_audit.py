@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runtime_state import validate_evidence_path
+
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PATH = SKILL_ROOT / "templates" / "reports" / "团队迁移报告.template.md"
@@ -103,7 +105,7 @@ def git_ignored(root: Path, path: Path) -> bool:
     return result.returncode == 0
 
 
-def load_threads(path: Path | None) -> tuple[list[dict[str, Any]], list[str]]:
+def load_threads(root: Path, path: Path | None) -> tuple[list[dict[str, Any]], list[str]]:
     if path is None:
         return [], ["未提供任务快照，运行时状态尚未核验"]
     try:
@@ -130,7 +132,27 @@ def load_threads(path: Path | None) -> tuple[list[dict[str, Any]], list[str]]:
         entry.setdefault("title", "未命名任务")
         entry.setdefault("status", "unknown")
         entry.setdefault("summary", "")
-        entry.setdefault("evidence_paths", [])
+        evidence_paths: list[str] = []
+        for field in ("evidence_paths", "evidence"):
+            value = entry.get(field, [])
+            if value is None:
+                continue
+            if not isinstance(value, list):
+                warnings.append(f"第 {index} 条任务的 {field} 不是数组，已忽略")
+                continue
+            for raw_path in value:
+                path = str(raw_path).strip() if isinstance(raw_path, str) else ""
+                if not path:
+                    warnings.append(f"第 {index} 条任务的 {field} 包含空路径，已忽略")
+                    continue
+                try:
+                    normalized_path = validate_evidence_path(root, path)
+                except (OSError, ValueError) as exc:
+                    warnings.append(f"第 {index} 条任务的 {field} 证据无效，已忽略: {exc}")
+                    continue
+                if normalized_path not in evidence_paths:
+                    evidence_paths.append(normalized_path)
+        entry["evidence_paths"] = evidence_paths
         entry.setdefault("owned_paths", [])
         entry.setdefault("attempts", 0)
         entry.setdefault("needs_user_input", False)
@@ -397,7 +419,7 @@ def main() -> int:
     try:
         root = find_project_root(args.project)
         snapshot_path = Path(args.threads_json).expanduser().resolve() if args.threads_json else None
-        threads, warnings = load_threads(snapshot_path)
+        threads, warnings = load_threads(root, snapshot_path)
         report = render_report(root, threads, warnings)
         if args.report:
             report_path = resolve_report_path(root, args.report, args.overwrite_report)

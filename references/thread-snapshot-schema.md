@@ -1,26 +1,27 @@
-# 任务快照结构
+# Registry / Snapshot Schema 2.0
 
-`team_audit.py --threads-json` 接受数组，或带 `threads` 数组的对象。
+每条记录至少包含：
 
 ```json
 {
-  "schema_version": "2.0",
-  "captured_at": "2026-07-17T00:00:00Z",
-  "threads": [
-    {
-      "id": "task-id",
-      "title": "前端实现",
-      "status": "in_progress",
-      "summary": "不超过10行的最近摘要",
-      "evidence_paths": ["docs/协作/证据/task-id.md"],
-      "owned_paths": ["src/pages/example.tsx"],
-      "attempts": 1,
-      "needs_user_input": false
-    }
-  ]
+  "id": "TASK-001",
+  "instance_id": "client-instance-id",
+  "domain_key": "domain",
+  "lane": "fast",
+  "depth": 1,
+  "parent_thread_id": null,
+  "dependencies": [],
+  "model_tier": "standard",
+  "model": "gpt-5.6-terra",
+  "status": "active",
+  "owned_paths": ["src/domain"],
+  "last_heartbeat": "ISO-8601",
+  "timeout_seconds": 1800,
+  "failure_history": [],
+  "handoff_path": null,
+  "generation": 1,
+  "evidence_paths": []
 }
 ```
 
-运行时注册表推荐状态：`provisioning`、`active`、`waiting_input`、`reviewing`、`degraded`、`completed`、`blocked`、`cancelled`、`archived`。审计器仍兼容 v1 `tasks` 与旧状态名，但只读兼容不等于已迁移。
-
-缺少快照时，脚本仍可审计文件系统配置，但报告必须标记“运行时状态未核验”，不能推断任务已完成或失联。
+队列记录 `instance_id=null`、`status=queued`、`generation=0`。运行中模型不可改；升级后新 ID 写入 `instance_id`，旧 ID 写入 `replaces_instance_id`。completed 必须有 evidence。状态快照的 `threads` 必须与 registry 完全一致。

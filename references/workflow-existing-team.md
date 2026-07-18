@@ -1,33 +1,9 @@
-# 已有团队审计工作流
+# Workflow: Existing or Unknown Team
 
-## 1. 收集项目证据
+已有角色、manifest、运行态、配置角色或 AGENTS 标记时不得直接初始化。
 
-- 项目 AGENTS、README/START-HERE、协作台账与任务包。
-- `.codex/config.toml`、`.codex/agents/*.toml`、角色引用关系。
-- `git status --short`、当前分支和未提交文件所有权。
+- 受管 schema 1.0 或 schema 2.0 旧 Skill：按 `schema-migration.md` dry-run 升级。
+- 当前 2.0.0：doctor + runtime health。
+- 未知 schema、非受管、自定义角色或状态冲突：运行 `team_audit.py` 只读审计。
 
-## 2. 收集运行时证据
-
-优先使用客户端任务工具读取标题、状态、最近摘要、证据路径和是否等待输入。将结果整理成 `thread-snapshot-schema.md` 定义的 JSON；脚本不直接猜测任务运行状态。
-
-## 3. 生成报告
-
-```bash
-python3 scripts/team_audit.py --project <项目根目录> --threads-json <快照>
-```
-
-报告必须包含：当前配置、Git 未提交路径、角色映射、异常、文件所有权风险、建议档案、迁移批次和确认边界。落盘仅允许 `docs/协作/*.md`，默认不得覆盖已有报告。
-
-## 4. 用户确认
-
-逐项确认：
-
-- 哪些任务先收口并归档；
-- 哪些任务保存现场后冻结；
-- 哪些任务用新角色实例重派；
-- 是否允许调整 `.codex` 配置和 AGENTS 规则；
-- 谁拥有仍未提交的文件。
-
-## 5. 分批迁移
-
-每批最多迁移一个写任务组。先恢复可验证现场，再部署角色模板，执行 doctor 和新 reviewer 审查；不要一次性清空整个旧团队。
+审计报告要列出现有实例、职责、状态、模型、路径、依赖、心跳、风险和建议动作；报告生成不等同迁移执行。旧 reviewer 必须收口，后续高风险审查使用全新实例。任何生产写入、发布和凭据动作都不包含在迁移授权中。

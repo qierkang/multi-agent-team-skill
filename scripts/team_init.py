@@ -43,6 +43,7 @@ KEY_RE_TEMPLATE = r"^\s*{key}\s*="
 DOC_TEMPLATES = {
     "docs/协作/任务台账.md": "任务台账.template.md",
     "docs/协作/任务包模板.md": "任务包.template.md",
+    "docs/协作/最小派发包模板.md": "最小派发包.template.md",
     "docs/协作/摘要模板.md": "摘要.template.md",
     "docs/协作/状态快照.json": "状态快照.template.json",
     "docs/协作/长期线程注册表.md": "长期线程注册表.template.md",
@@ -624,10 +625,15 @@ def main() -> int:
             "orchestration": {
                 "thread_creation_mode": args.thread_mode,
                 "registry": str(MANAGED_STATE_FILES[1]),
-                "control_plane": "main-task-only",
+                "control_plane": "control-plane-only",
+                "lanes": ["fast", "project"],
+                "queue_capacity": "unbounded",
+                "max_concurrency_total": 6,
+                "max_concurrent_writers": 2,
                 "runtime_adapter": "codex-client-thread-tools",
             },
             "runtime_smoke_test": "pending",
+            "runtime_smoke_evidence": {"explorer": [], "reviewer": []},
         }
         writes[manifest_path] = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
         transactional_write(writes)

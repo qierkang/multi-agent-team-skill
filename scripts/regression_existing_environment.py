@@ -19,6 +19,7 @@ INIT = SKILL_ROOT / "scripts" / "team_init.py"
 AUDIT = SKILL_ROOT / "scripts" / "team_audit.py"
 DOCTOR = SKILL_ROOT / "scripts" / "team_doctor.py"
 UPGRADE = SKILL_ROOT / "scripts" / "team_upgrade.py"
+ORCH = SKILL_ROOT / "scripts" / "thread_orchestrator.py"
 THREADS = SKILL_ROOT / "examples" / "threads.example.json"
 TEMPLATES = SKILL_ROOT / "templates"
 MODEL_ARGS = (
@@ -94,14 +95,89 @@ def main() -> int:
         require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", project).stdout, "doctor failed")
         passed.append("existing config, AGENTS and business files are preserved with backup")
 
+        controlled_task = project / "controlled-auto-task.json"
+        controlled_task.write_text(
+            json.dumps({
+                "domain_key": "controlled-auto-regression",
+                "title": "controlled auto regression",
+                "task_type": "migration",
+                "risk": "high",
+                "expected_days": 2,
+                "task_packages": 4,
+                "independent_boundary": True,
+                "recurring": True,
+            }),
+            encoding="utf-8",
+        )
+        mode_plan = run(
+            "python3", UPGRADE, "--project", project, "--thread-mode", "controlled-auto"
+        ).stdout
+        require("STATE=thread_mode_reconfiguration_plan_ready" in mode_plan, "v2 thread-mode dry-run was ignored")
+        mode_apply = run(
+            "python3", UPGRADE, "--project", project, "--thread-mode", "controlled-auto", "--apply"
+        ).stdout
+        require("STATE=thread_mode_reconfigured" in mode_apply, "v2 thread-mode update was not applied")
+        mode_manifest = json.loads((project / ".codex/team-bootstrap.json").read_text(encoding="utf-8"))
+        mode_state = json.loads((project / ".codex/team/project-state.json").read_text(encoding="utf-8"))
+        require(
+            mode_manifest["orchestration"]["thread_creation_mode"] == "controlled-auto"
+            and mode_state["thread_creation_mode"] == "controlled-auto",
+            "v2 thread mode did not update manifest and project state together",
+        )
+        require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", project).stdout, "doctor rejected controlled-auto mode update")
+        run(
+            "python3", ORCH, "enqueue", "--project", project, "--task-json", controlled_task,
+            "--task-id", "controlled-auto-task", "--apply",
+        )
+        run(
+            "python3", ORCH, "dispatch", "--project", project, "--task-id", "controlled-auto-task",
+            "--instance-id", "controlled-auto-instance", "--apply",
+        )
+        guarded_paths = [
+            project / ".codex/team-bootstrap.json",
+            project / ".codex/team/project-state.json",
+            project / ".codex/team/thread-registry.json",
+            project / "docs/协作/状态快照.json",
+            *(project / ".codex/agents").glob("*.toml"),
+        ]
+        guarded_hashes = {path: digest(path) for path in guarded_paths}
+        replacement_required = run(
+            "python3", UPGRADE, "--project", project, "--model-advanced", "gpt-5.5-advanced",
+            "--apply", expected=(2,),
+        )
+        require(
+            "STATE=replacement_required" in replacement_required.stdout
+            and "controlled-auto-instance" in replacement_required.stdout,
+            "active v2 model reconfiguration did not require replacement",
+        )
+        require(
+            all(digest(path) == value for path, value in guarded_hashes.items()),
+            "active model reconfiguration changed persisted instance or templates",
+        )
+        controlled_evidence = project / "artifacts/controlled-auto.log"
+        controlled_evidence.parent.mkdir(parents=True, exist_ok=True)
+        controlled_evidence.write_text("controlled auto dispatch passed\n", encoding="utf-8")
+        run(
+            "python3", ORCH, "update", "--project", project, "--thread-id", "controlled-auto-task",
+            "--status", "completed", "--evidence", "artifacts/controlled-auto.log", "--apply",
+        )
+        passed.append("existing v2 mode upgrade enables controlled-auto while active model changes require replacement")
+
         patch_v2 = repo / "patch-v2"
         shutil.copytree(project, patch_v2)
         patch_manifest_path = patch_v2 / ".codex/team-bootstrap.json"
         patch_state_path = patch_v2 / ".codex/team/project-state.json"
         patch_manifest = json.loads(patch_manifest_path.read_text(encoding="utf-8"))
         patch_state = json.loads(patch_state_path.read_text(encoding="utf-8"))
-        patch_manifest["skill_version"] = "1.0.0"
-        patch_state["skill_version"] = "1.0.0"
+        patch_manifest["skill_version"] = "1.0.1"
+        patch_state["skill_version"] = "1.0.1"
+        patch_state.pop("control_plane_mode", None)
+        for key in ("max_concurrency_total", "queue_capacity", "timeout_policy", "dispatch_policy"):
+            patch_state.pop(key, None)
+        patch_manifest["orchestration"]["control_plane"] = "main-task-only"
+        for key in ("lanes", "queue_capacity", "max_concurrency_total", "max_concurrent_writers"):
+            patch_manifest["orchestration"].pop(key, None)
+        (patch_v2 / "docs/协作/最小派发包模板.md").unlink()
         patch_manifest_path.write_text(json.dumps(patch_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         patch_state_path.write_text(json.dumps(patch_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         patch_business = {path: digest(path) for path in (patch_v2 / "README.md", patch_v2 / "app.py")}
@@ -110,6 +186,14 @@ def main() -> int:
         patch_apply = run("python3", UPGRADE, "--project", patch_v2, "--apply").stdout
         require("STATE=team_patch_upgraded" in patch_apply, "v2 patch upgrade did not apply")
         require(all(digest(path) == value for path, value in patch_business.items()), "v2 patch upgrade changed business files")
+        patched_state = json.loads(patch_state_path.read_text(encoding="utf-8"))
+        require(
+            patched_state["control_plane_mode"] == "control-plane-only"
+            and patched_state["max_concurrency_total"] == 6
+            and patched_state["queue_capacity"] == "unbounded",
+            "v2 control-plane/queue policy was not migrated",
+        )
+        require((patch_v2 / "docs/协作/最小派发包模板.md").is_file(), "v2 patch did not add minimal dispatch template")
         require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", patch_v2).stdout, "v2 patch upgrade doctor failed")
         passed.append("managed v2 patch upgrade updates metadata transactionally")
 
@@ -142,10 +226,22 @@ def main() -> int:
                     "evidence_paths": [],
                     "attempts": 1,
                     "needs_user_input": False,
+                }, {
+                    "id": "legacy-complete",
+                    "title": "legacy completed task",
+                    "status": "completed",
+                    "summary": "preserve completed evidence",
+                    "owned_paths": [],
+                    "evidence": ["artifacts/legacy-complete.log"],
+                    "attempts": 0,
+                    "needs_user_input": False,
                 }],
             }, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        legacy_artifact = managed_v1 / "artifacts/legacy-complete.log"
+        legacy_artifact.parent.mkdir(parents=True, exist_ok=True)
+        legacy_artifact.write_text("legacy completion evidence\n", encoding="utf-8")
         managed_agents_path = managed_v1 / "AGENTS.md"
         managed_agents_path.write_text(
             managed_agents_path.read_text(encoding="utf-8")
@@ -159,29 +255,52 @@ def main() -> int:
         v1_payload = json.loads(v1_inspection)
         require(v1_payload["route_detail"] == "existing-team:v1", "v1 manifest not detailed to existing-team:v1")
         require(v1_payload["schema_version"] == "1.0", "v1 schema version not surfaced")
+        invalid_migration = repo / "invalid-evidence-v1"
+        shutil.copytree(managed_v1, invalid_migration)
+        invalid_snapshot_path = invalid_migration / "docs/协作/状态快照.json"
+        invalid_snapshot = json.loads(invalid_snapshot_path.read_text(encoding="utf-8"))
+        invalid_snapshot["tasks"][1]["evidence"] = ["artifacts/missing-legacy.log"]
+        invalid_snapshot_path.write_text(json.dumps(invalid_snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        invalid_upgrade = run("python3", UPGRADE, "--project", invalid_migration, "--apply", expected=(2,))
+        require("evidence file does not exist" in invalid_upgrade.stderr, "v1 migration accepted missing evidence")
+        v1_model_guard = run(
+            "python3", UPGRADE, "--project", managed_v1, "--thread-mode", "controlled-auto",
+            "--apply", *MODEL_ARGS, expected=(2,),
+        )
+        require(
+            "STATE=replacement_required" in v1_model_guard.stdout and "legacy-live" in v1_model_guard.stdout,
+            "v1 active instance model migration did not require replacement",
+        )
         upgrade_plan = run("python3", UPGRADE, "--project", managed_v1, "--thread-mode", "controlled-auto").stdout
         require("STATE=upgrade_plan_ready" in upgrade_plan, "v1 upgrade dry-run not ready")
         require(not (managed_v1 / ".codex/team").exists(), "upgrade dry-run wrote runtime state")
         upgraded = run(
             "python3", UPGRADE, "--project", managed_v1, "--thread-mode", "controlled-auto",
-            "--apply", *MODEL_ARGS,
+            "--apply",
         ).stdout
         require("STATE=team_upgraded" in upgraded, "v1 upgrade did not complete")
         require(all(digest(path) == value for path, value in preserved_hashes.items()), "upgrade changed config or business files")
         require(
-            'model = "gpt-5.3-codex-spark"' in (managed_v1 / ".codex/agents/explorer.toml").read_text(encoding="utf-8")
-            and 'model = "gpt-5.4"' in (managed_v1 / ".codex/agents/architect.toml").read_text(encoding="utf-8"),
-            "upgrade did not inject configured model tiers into managed roles",
+            'model = "gpt-5.6-luna"' in (managed_v1 / ".codex/agents/explorer.toml").read_text(encoding="utf-8")
+            and 'model = "gpt-5.6-sol"' in (managed_v1 / ".codex/agents/architect.toml").read_text(encoding="utf-8"),
+            "upgrade did not preserve canonical model tiers for the active v1 instance",
         )
         migrated = json.loads(v1_manifest_path.read_text(encoding="utf-8"))
-        require(migrated["schema_version"] == "2.0" and migrated["skill_version"] == "1.0.1", "manifest migration mismatch")
+        require(migrated["schema_version"] == "2.0" and migrated["skill_version"] == "2.0.0", "manifest migration mismatch")
+        require(migrated["orchestration"]["control_plane"] == "control-plane-only", "control-plane migration mismatch")
         require(migrated["orchestration"]["thread_creation_mode"] == "controlled-auto", "migration thread mode mismatch")
         migrated_registry = json.loads((managed_v1 / ".codex/team/thread-registry.json").read_text(encoding="utf-8"))
         migrated_snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
         require(
-            len(migrated_registry["threads"]) == 1
+            len(migrated_registry["threads"]) == 2
             and migrated_registry["threads"][0]["id"] == "legacy-live"
-            and migrated_registry["threads"][0]["status"] == "active",
+            and migrated_registry["threads"][0]["status"] == "active"
+            and migrated_registry["threads"][0]["lane"] == "project"
+            and migrated_registry["threads"][0]["depth"] == 1
+            and migrated_registry["threads"][0]["dependencies"] == []
+            and migrated_registry["threads"][1]["id"] == "legacy-complete"
+            and migrated_registry["threads"][1]["status"] == "completed"
+            and migrated_registry["threads"][1]["evidence_paths"] == ["artifacts/legacy-complete.log"],
             "non-empty v1 task was not preserved in runtime registry",
         )
         require(migrated_snapshot["threads"] == migrated_registry["threads"], "migrated snapshot differs from runtime registry")
@@ -191,7 +310,7 @@ def main() -> int:
         require("STATE=static_validation_done" in run("python3", DOCTOR, "--project", managed_v1).stdout, "upgraded v1 doctor failed")
         require(list((managed_v1 / ".codex/backups/multi-agent-team").glob("*/.codex/team-bootstrap.json")), "upgrade manifest backup missing")
         require(list((managed_v1 / ".codex/backups/multi-agent-team").glob("*/.codex/agents/explorer.toml")), "upgrade role backup missing")
-        passed.append("managed v1 upgrades transactionally with model injection and preserves business files")
+        passed.append("managed v1 migration requires real evidence and refuses in-place active model changes")
 
         unknown = repo / "unknown-schema"
         shutil.copytree(managed_v1, unknown)
@@ -246,6 +365,15 @@ def main() -> int:
         routed = run("python3", INIT, "--project", legacy, "--apply", expected=(3,)).stdout
         require("STATE=needs_audit" in routed and digest(legacy_config) == before, "legacy team was modified")
         report_relative = "docs/协作/团队迁移报告-回归.md"
+        for relative in (
+            "docs/协作/证据/demo-frontend.md",
+            "docs/协作/证据/demo-reviewer.md",
+            "artifacts/legacy-evidence.log",
+            "artifacts/modern-evidence.log",
+        ):
+            evidence_path = legacy / relative
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            evidence_path.write_text("real audit evidence\n", encoding="utf-8")
         audited = run(
             "python3", AUDIT,
             "--project", legacy,
@@ -265,6 +393,40 @@ def main() -> int:
         )
         require("STATE=audit_failed" in duplicate.stdout, "audit overwrote report without confirmation")
         passed.append("existing team is audited read-only and reports are non-overwriting")
+
+        legacy_evidence_snapshot = legacy / "legacy-evidence.json"
+        legacy_evidence_snapshot.write_text(
+            json.dumps({
+                "schema_version": "1.0",
+                "tasks": [{
+                    "id": "legacy-evidence",
+                    "title": "legacy evidence field",
+                    "status": "completed",
+                    "evidence": ["artifacts/legacy-evidence.log"],
+                }, {
+                    "id": "modern-evidence-paths",
+                    "title": "modern evidence paths field",
+                    "status": "completed",
+                    "evidence_paths": ["artifacts/modern-evidence.log"],
+                }],
+            }, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        legacy_evidence_report = legacy / "docs/协作/团队迁移报告-旧证据回归.md"
+        audited_evidence = run(
+            "python3", AUDIT,
+            "--project", legacy,
+            "--threads-json", legacy_evidence_snapshot,
+            "--report", str(legacy_evidence_report.relative_to(legacy)),
+        ).stdout
+        legacy_evidence_text = legacy_evidence_report.read_text(encoding="utf-8")
+        require("STATE=audit_report_ready" in audited_evidence, "legacy evidence audit report missing")
+        require(
+            legacy_evidence_text.count("证据齐全后收口归档") == 2
+            and "先补齐证据，再收口归档" not in legacy_evidence_text,
+            "audit misclassified completed legacy evidence",
+        )
+        passed.append("audit accepts completed-task evidence and evidence_paths without false missing-evidence advice")
 
         ignored = repo / "ignored-child"
         ignored.mkdir()

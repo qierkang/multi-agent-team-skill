@@ -1,12 +1,14 @@
 {
   "schema_version": "2.0",
   "skill_name": "multi-agent-team",
-  "skill_version": "1.0.1",
+  "skill_version": "2.0.0",
   "defaults": {
     "max_threads": 6,
     "max_depth": 1,
     "job_max_runtime_seconds": 1800,
-    "max_concurrent_writers": 2
+    "max_concurrent_writers": 2,
+    "max_concurrency_total": 6,
+    "queue_capacity": "unbounded"
   },
   "model_tiers": {
     "fast": "gpt-5.6-luna",

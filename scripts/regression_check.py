@@ -9,6 +9,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITES = (
+    (
+        "inspect",
+        ROOT / "scripts" / "regression_inspect_routes.py",
+        "STATE=inspect_routes_regression_passed",
+    ),
     ("new", ROOT / "scripts" / "regression_new_environment.py", "STATE=new_environment_regression_passed"),
     (
         "existing",
@@ -38,7 +43,7 @@ def main() -> int:
             return 1
         states[name] = "passed"
     print(
-        f"STATE=regression_passed; new={states['new']}; "
+        f"STATE=regression_passed; inspect={states['inspect']}; new={states['new']}; "
         f"existing={states['existing']}; runtime={states['runtime']}"
     )
     return 0

@@ -1,9 +1,7 @@
 {
-  "domain_key": "acme-shop::payment",
-  "title": "支付域重构与对账",
-
-  "owned_paths": ["src/payment/**", "docs/payment/**"],
-
+  "domain_key": "domain-a",
+  "title": "持续领域任务",
+  "owned_paths": ["src/domain-a", "docs/domain-a"],
   "expected_days": 3,
   "task_packages": 4,
   "independent_boundary": true,
@@ -11,8 +9,9 @@
   "independent_release": true,
   "decision_retention": true,
   "parallelizable": true,
-
   "task_type": "implementation",
   "risk": "high",
-  "attempts": 0
+  "attempts": 0,
+  "dependencies": [],
+  "timeout_seconds": 86400
 }

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -42,6 +43,7 @@ REQUIRED_FILES = {
     "references/completion-gate.md",
     "governance/INDEX.md",
     "governance/health-check.md",
+    "governance/PRODUCTION-SCORECARD.md",
     "references/github-publish.md",
     "assets/asset-manifest.json",
     "assets/social-preview.png",
@@ -52,6 +54,7 @@ REQUIRED_FILES = {
     "docs/README_en.md",
     "docs/README_zh-tw.md",
     "examples/task-input.example.json",
+    "examples/regression-evidence-2026-07-18-v2.md",
     "SECURITY.md",
     "CODE_OF_CONDUCT.md",
     ".github/workflows/ci.yml",
@@ -62,9 +65,12 @@ REQUIRED_FILES = {
     "install/sync.sh",
     "install/doctor.sh",
     "scripts/runtime_state.py",
+    "scripts/runtime_smoke.py",
     "scripts/thread_orchestrator.py",
     "scripts/team_upgrade.py",
     "scripts/regression_runtime_orchestration.py",
+    "scripts/regression_inspect_routes.py",
+    "scripts/check_readme_links.py",
     "references/runtime-orchestration.md",
     "references/long-thread-policy.md",
     "references/health-anomaly-token.md",
@@ -102,8 +108,12 @@ def main() -> int:
     skill_path = ROOT / "SKILL.md"
     skill_text = skill_path.read_text(encoding="utf-8") if skill_path.is_file() else ""
     emit(len(skill_text.splitlines()) <= 80, "SKILL.md stays within 80 lines", failures)
+    emit(35 <= len(skill_text.splitlines()) <= 50, "SKILL.md stays near 40 lines", failures)
     emit(bool(re.search(r"(?m)^name:\s*multi-agent-team\s*$", skill_text)), "stable skill name", failures)
+    emit('version: "2.0.0"' in skill_text, "Skill metadata version 2.0.0", failures)
     emit("references/" in skill_text and "scripts/" in skill_text, "root entry routes progressively", failures)
+    emit("control-plane-only" in skill_text and "fast lane" in skill_text and "project lane" in skill_text, "v2 control plane and lanes documented", failures)
+    emit("handle_in_main" not in skill_text and "use_subagents" not in skill_text, "no main-task implementation route", failures)
 
     try:
         catalog = json.loads((TEMPLATES / "role-catalog.json").read_text(encoding="utf-8"))
@@ -111,7 +121,7 @@ def main() -> int:
         profiles = catalog.get("profiles", {})
         emit(catalog_roles == EXPECTED_ROLES, "role catalog contains exactly eight roles", failures)
         emit(catalog.get("schema_version") == "2.0", "role catalog schema 2.0", failures)
-        emit(catalog.get("skill_version") == "1.0.1", "role catalog skill version 1.0.1", failures)
+        emit(catalog.get("skill_version") == "2.0.0", "role catalog skill version 2.0.0", failures)
         emit(
             isinstance(profiles, dict)
             and bool(profiles)
@@ -141,6 +151,7 @@ def main() -> int:
         "project/config.snippet.toml",
         "project/docs/任务台账.template.md",
         "project/docs/任务包.template.md",
+        "project/docs/最小派发包.template.md",
         "project/docs/摘要.template.md",
         "project/docs/状态快照.template.json",
         "project/docs/长期线程注册表.template.md",
@@ -209,6 +220,20 @@ def main() -> int:
         failures,
     )
 
+    link_result = subprocess.run(
+        ["python3", str(ROOT / "scripts/check_readme_links.py")],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    print(link_result.stdout, end="")
+    emit(
+        link_result.returncode == 0 and "STATE=readme_links_passed" in link_result.stdout,
+        "README local links",
+        failures,
+    )
+
     if args.deep and not failures:
         result = subprocess.run(
             ["python3", str(ROOT / "scripts/regression_check.py")],
@@ -221,6 +246,22 @@ def main() -> int:
         emit(
             result.returncode == 0 and "STATE=regression_passed" in result.stdout,
             "new and existing environment regression",
+            failures,
+        )
+        optimized_env = dict(os.environ)
+        optimized_env["PYTHONOPTIMIZE"] = "1"
+        optimized = subprocess.run(
+            ["python3", str(ROOT / "scripts/regression_check.py")],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+            env=optimized_env,
+        )
+        print(optimized.stdout, end="")
+        emit(
+            optimized.returncode == 0 and "STATE=regression_passed" in optimized.stdout,
+            "regressions pass with PYTHONOPTIMIZE=1",
             failures,
         )
 

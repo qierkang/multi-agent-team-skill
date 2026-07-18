@@ -1,4 +1,4 @@
 interface:
   display_name: "多智能体研发团队编排"
-  short_description: "为新项目或已有项目检查、部署、审计并验证一次性多智能体研发团队"
-  default_prompt: "使用 $multi-agent-team 检查当前项目并按正确路由初始化或审计团队。"
+  short_description: "inspect-first 初始化、升级或检查 control-plane-only 双通道多智能体团队"
+  default_prompt: "使用 $multi-agent-team 先只读检查当前项目，再自动选择初始化、升级、审计或健康检查路径。"

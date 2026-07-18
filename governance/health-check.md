@@ -1,35 +1,22 @@
-# Skill 健康检查
+# v2 健康检查
 
-## 快速检查
-
-```bash
-python3 scripts/health_check.py
-```
-
-必须输出 `STATE=skill_health_passed`，检查内容包括：
-
-- 根入口不超过 80 行并保持稳定 Skill 名称。
-- `references/`、`scripts/`、`templates/`、`examples/`、`governance/` 分层存在。
-- 角色目录、角色目录清单和 Profile 引用一致。
-- TOML、JSON 和 Python 脚本可解析。
-- 不存在旧模板路径和本机用户绝对路径。
-
-## 深度检查
+修改 Skill 后运行：
 
 ```bash
 python3 scripts/health_check.py --deep
+PYTHONOPTIMIZE=1 python3 scripts/regression_check.py
+python3 scripts/check_readme_links.py
+bash scripts/verify_assets.sh
 ```
 
-除快速检查外，还必须通过：
+检查项：
 
-- 全新环境初始化回归。
-- 已有业务项目非侵入式回归。
-- 受管 v1 非空任务升级、未知团队只读审计和安全门禁回归。
-- 并发注册、所有权、Token、snapshot/registry 等价性和 reconcile 故障回归。
+- SKILL 2.0.0、约 40 行入口和 inspect-first 路由；
+- control-plane-only、fast/project、无限队列、总并发 6、写并发 2；
+- 角色、模型、模板、assets/templates 分离和零本机绝对路径；
+- init、upgrade、doctor、health、runtime_smoke、orchestrator 与新/旧/runtime 回归；
+- 旧 evidence 兼容、health 并发一致快照、冒烟状态迁移、依赖、层级、所有权、心跳、超时、同因失败和新实例升级；
+- README 中英繁本地链接和登记视觉资产；
+- 官方 Skill validator 若存在则单独运行并保存真实输出。
 
-深度检查最终应输出：
-
-```text
-STATE=regression_passed; new=passed; existing=passed; runtime=passed
-STATE=skill_health_passed
-```
+任何未执行或失败项必须进入验证证据与残余风险，不得以源码检查代替运行结果。

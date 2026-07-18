@@ -1,40 +1,30 @@
 # 完成闸
 
-## 静态闸
+## 初始化/升级
 
-0. `python3 scripts/health_check.py` 返回 `STATE=skill_health_passed`。
-1. `.codex/config.toml` 可由 `tomllib` 解析。
-2. `features.multi_agent = true`。
-3. `agents.max_depth = 1`，`agents.max_threads <= 6`。
-4. manifest 中所有角色 TOML 存在、可解析、权限符合角色职责。
-5. AGENTS 协作标记、台账、任务包、摘要、v2 `threads` 快照和 `.codex/team/*` 均存在。
-6. 模板目录不存在本机绝对路径或具体业务残留。
-7. doctor 校验 manifest、实际配置和实际角色文件集合一致，角色内容与安装模板一致，受管文件未被 Git 忽略。
+- inspect 路由与实际动作一致，默认 dry-run 证据存在。
+- manifest 与 project-state 为 Skill 2.0.0，control plane 为 `control-plane-only`。
+- fast/project lane、无限队列、总并发 6、写并发 2 已声明；Codex `agents.max_depth=1`，registry 受管关系最多 depth 2。
+- 角色、AGENTS 受管块、完整/最小派发包、台账、快照和 `.codex/team/*` 存在。
+- 受管文件无 symlink、可追踪、schema 可解析，registry 与派生状态一致。
+- v1/v2-upgrade 保留业务文件、线程 ID、状态和证据，且有备份。
 
-## 真实派生闸
+## 运行态
 
-在隔离临时 Git 项目执行：
+- `team_doctor.py` 成功。
+- `thread_orchestrator.py health` 成功；degraded 必须明确报告。
+- manifest 冒烟状态只能是 `pending / partial_done / runtime_validation_done`；后两者必须由 `runtime_smoke.py` 记录真实、存在且非空的 explorer/reviewer 证据，证据不全不得标 done。
+- 目标项目自身构建/测试已运行或明确说明无法运行。
+- high/critical 使用 fresh reviewer；轻任务未被机械强制 full reviewer。
+- completed 的所有证据路径均项目相对、存在、非空、非 symlink；失败两次使用新实例升级而非原地换模型。
 
-```bash
-python3 scripts/team_init.py --project <临时项目> --profile full
-python3 scripts/team_init.py --project <临时项目> --profile full --apply
-python3 scripts/team_doctor.py --project <临时项目>
-```
-
-再次执行检查应路由到 `existing-team`，初始化器应返回 `STATE=needs_audit`，不得覆盖。
-
-运行可执行安全回归：
+## Skill 源码包
 
 ```bash
-python3 scripts/regression_check.py
-# STATE=regression_passed; new=passed; existing=passed; runtime=passed
-
+python3 scripts/health_check.py --deep
 PYTHONOPTIMIZE=1 python3 scripts/regression_check.py
-# 优化模式同样必须通过，避免测试断言被移除后产生假阳性
+python3 scripts/check_readme_links.py
+bash scripts/verify_assets.sh
 ```
 
-## 运行态闸
-
-1. `thread_orchestrator.py health` 必须通过，且所有权/预算派生状态与 registry revision 一致。
-2. 主任务创建一个项目级 explorer 和一个全新 reviewer 做最小真实冒烟，并把任务 ID、实际模型、沙箱、退出状态和证据路径写入项目证据。
-3. 若当前客户端不支持任务/子智能体或无法确认实际沙箱，manifest 保持 `runtime_smoke_test=pending`，必须报告 `STATE=partial_done`。
+若存在官方 validator，再运行并记录真实输出。任何未执行项必须列为残余风险，不得写成通过。
