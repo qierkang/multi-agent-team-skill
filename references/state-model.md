@@ -11,7 +11,10 @@
 | `.codex/team/recovery-journal.json` | 迁移、失败、替换和恢复事件 |
 | `docs/协作/状态快照.json` | 与 registry 同步的人读快照 |
 | `.codex/team-bootstrap.json` 的 `runtime_smoke_*` | 客户端冒烟 `pending / partial_done / runtime_validation_done` 与 explorer/reviewer 证据 |
+| `.codex/team-bootstrap.json` 的 `orchestration.control_task` | 已由客户端确认的主控 thread/host/title/URI/pin 绑定 |
 
 registry mutation 使用进程锁、revision CAS 和原子替换；health 在同一进程锁下读取 registry、锁、预算和快照，避免观察到写入中间态。聊天不是唯一状态真源。
 
 `runtime_smoke.py` 默认 dry-run。只记录项目内已存在、非空、非 symlink 的真实客户端日志；单侧角色证据只能到 `partial_done`，explorer 与 fresh reviewer 两侧齐全才到 `runtime_validation_done`。无法运行客户端时保持 `pending`。
+
+`bind_control_task.py` 默认 dry-run；只有客户端真实重命名和置顶成功后才允许 `--pinned --apply`。普通 doctor 接受尚未指定主控的项目，但一旦存在绑定就校验完整性；`--strict` 同时要求有效绑定与双角色 runtime smoke。

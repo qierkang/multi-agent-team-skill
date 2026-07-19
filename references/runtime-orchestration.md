@@ -4,6 +4,8 @@
 
 主任务默认 `control-plane-only`：可以只读判断、拆分、排队、派发、监控、验收、汇报和写受管调度状态，但不得修改生产代码。planner 永不返回“主任务直接实现”。
 
+所有写任务必须绑定 inspect 已确认项目根目录内的相对 `owned_paths`；发现目标是另一 checkout/worktree 或根目录之外路径时停止并重新 inspect，不得跨工作区直接修改。
+
 ### Dispatch-and-return
 
 成功 spawn 一个或一批 Agent 后，主任务必须立即 ACK 任务编号、角色、状态并结束当前 turn；多个独立 Agent 必须先批量 spawn，再一次性 ACK。该 turn 禁止 `wait_agent`、重复 read/status polling、长测试或继续集成。完成通知、health、验收和重派只在后续用户 turn、完成事件 turn 或自动化唤醒处理；用户新消息优先，由依赖队列和路径所有权避免冲突。同步等待仅在用户明确要求并先告知会阻塞输入时允许。Python 无法控制客户端 turn 结束，不得伪造 UI 并发证据。

@@ -35,6 +35,11 @@ SUITES = (
         ROOT / "scripts" / "regression_goal_policy.py",
         "STATE=goal_policy_regression_passed",
     ),
+    (
+        "control-plane-policy",
+        ROOT / "scripts" / "regression_control_plane_policy.py",
+        "STATE=control_plane_policy_regression_passed",
+    ),
 )
 
 

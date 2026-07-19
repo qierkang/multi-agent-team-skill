@@ -3,7 +3,7 @@
 已有角色、manifest、运行态、配置角色或 AGENTS 标记时不得直接初始化。
 
 - 受管 schema 1.0 或 schema 2.0 旧 Skill：按 `schema-migration.md` dry-run 升级。
-- 当前 2.0.3：doctor + runtime health；确认 `interaction_policy` 后再进入后续 turn 验收。
+- 当前 2.0.4：doctor + runtime health；确认 `interaction_policy` 后再进入后续 turn 验收。
 - inspect、升级或最新版 health 成功后，主控读取 `TITLE_SUGGESTED` 并调用 `codex_app__set_thread_title`；客户端不可用只记 `TITLE_RENAME=pending`。
 - 未知 schema、非受管、自定义角色或状态冲突：运行 `team_audit.py` 只读审计。
 

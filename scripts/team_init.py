@@ -29,6 +29,7 @@ from runtime_state import (
     state_defaults,
 )
 from project_title import rename_action, suggested_title
+from agents_policy import conflict_messages
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -549,6 +550,10 @@ def main() -> int:
             args.replace_conflicts,
         )
         conflicts.extend(existing_doc_conflicts(root))
+        conflicts.extend(
+            f"AGENTS.md control-plane conflict: {item}"
+            for item in conflict_messages(agents_text)
+        )
         agents_text, agents_action = build_agents_text(root)
 
         manifest_path = root / ".codex" / "team-bootstrap.json"

@@ -44,6 +44,7 @@ from team_init import (
 )
 from thread_orchestrator import derived_runtime_state, ownership_conflicts
 from project_title import rename_action, suggested_title
+from agents_policy import conflict_messages
 
 
 SUPPORTED_FROM = {"1.0"}
@@ -295,7 +296,7 @@ def remap_registered_models(
 
 
 def upgrade_v2_records(threads: list[dict[str, Any]], policy: dict[str, Any]) -> list[dict[str, Any]]:
-    """Deterministically add v2.0.3 queue, interaction and replacement fields to schema-2 records."""
+    """Deterministically add v2.0.4 queue, interaction and replacement fields to schema-2 records."""
     upgraded = json.loads(json.dumps(threads))
     now = now_iso()
     model_tiers = policy["model_tiers"]
@@ -605,6 +606,14 @@ def main() -> int:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict) or manifest.get("skill") != "multi-agent-team":
             raise InstallError("非 multi-agent-team 受管 manifest，拒绝自动升级")
+        if not agents_path.is_file():
+            raise InstallError("缺少 AGENTS.md，需要人工审计")
+        agents_conflicts = conflict_messages(agents_path.read_text(encoding="utf-8"))
+        if agents_conflicts:
+            raise InstallError(
+                "AGENTS.md 非受管区与 control-plane-only 冲突，拒绝升级: "
+                + "; ".join(agents_conflicts)
+            )
         current_schema = str(manifest.get("schema_version", ""))
         if current_schema == SCHEMA_VERSION:
             if args.apply:
@@ -630,8 +639,6 @@ def main() -> int:
             )
         if current_schema not in SUPPORTED_FROM:
             raise InstallError(f"不支持从 schema {current_schema or 'missing'} 自动升级")
-        if not agents_path.is_file():
-            raise InstallError("缺少 AGENTS.md，需要人工审计")
         validate_v1_managed_assets(root, manifest)
         unexpected_state = [str(relative) for relative in MANAGED_STATE_FILES if (root / relative).exists()]
         if unexpected_state:

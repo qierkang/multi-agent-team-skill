@@ -54,7 +54,7 @@ REQUIRED_FILES = {
     "docs/README_en.md",
     "docs/README_zh-tw.md",
     "examples/task-input.example.json",
-    "examples/regression-evidence-2026-07-18-v2.md",
+    "examples/regression-evidence-2026-07-19-v2.0.4.md",
     "SECURITY.md",
     "CODE_OF_CONDUCT.md",
     ".github/workflows/ci.yml",
@@ -66,6 +66,8 @@ REQUIRED_FILES = {
     "install/doctor.sh",
     "scripts/runtime_state.py",
     "scripts/runtime_smoke.py",
+    "scripts/agents_policy.py",
+    "scripts/bind_control_task.py",
     "scripts/thread_orchestrator.py",
     "scripts/team_upgrade.py",
     "scripts/regression_runtime_orchestration.py",
@@ -76,6 +78,7 @@ REQUIRED_FILES = {
     "scripts/regression_interaction_policy.py",
     "scripts/goal_policy.py",
     "scripts/regression_goal_policy.py",
+    "scripts/regression_control_plane_policy.py",
     "references/runtime-orchestration.md",
     "references/long-thread-policy.md",
     "references/health-anomaly-token.md",
@@ -115,7 +118,7 @@ def main() -> int:
     emit(len(skill_text.splitlines()) <= 80, "SKILL.md stays within 80 lines", failures)
     emit(35 <= len(skill_text.splitlines()) <= 50, "SKILL.md stays near 40 lines", failures)
     emit(bool(re.search(r"(?m)^name:\s*multi-agent-team\s*$", skill_text)), "stable skill name", failures)
-    emit('version: "2.0.3"' in skill_text, "Skill metadata version 2.0.3", failures)
+    emit('version: "2.0.4"' in skill_text, "Skill metadata version 2.0.4", failures)
     emit("references/" in skill_text and "scripts/" in skill_text, "root entry routes progressively", failures)
     emit("control-plane-only" in skill_text and "fast lane" in skill_text and "project lane" in skill_text, "v2 control plane and lanes documented", failures)
     emit("control_plane_is_goal" in skill_text and "explicit-only" in skill_text, "Goal is explicit-only and not the control plane", failures)
@@ -128,7 +131,7 @@ def main() -> int:
         profiles = catalog.get("profiles", {})
         emit(catalog_roles == EXPECTED_ROLES, "role catalog contains exactly eight roles", failures)
         emit(catalog.get("schema_version") == "2.0", "role catalog schema 2.0", failures)
-        emit(catalog.get("skill_version") == "2.0.3", "role catalog skill version 2.0.3", failures)
+        emit(catalog.get("skill_version") == "2.0.4", "role catalog skill version 2.0.4", failures)
         emit(
             isinstance(profiles, dict)
             and bool(profiles)

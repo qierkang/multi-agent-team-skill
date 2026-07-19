@@ -303,7 +303,7 @@ def main() -> int:
             "upgrade did not preserve canonical model tiers for the active v1 instance",
         )
         migrated = json.loads(v1_manifest_path.read_text(encoding="utf-8"))
-        require(migrated["schema_version"] == "2.0" and migrated["skill_version"] == "2.0.3", "manifest migration mismatch")
+        require(migrated["schema_version"] == "2.0" and migrated["skill_version"] == "2.0.4", "manifest migration mismatch")
         require(migrated["orchestration"]["control_plane"] == "control-plane-only", "control-plane migration mismatch")
         require(migrated["orchestration"]["thread_creation_mode"] == "controlled-auto", "migration thread mode mismatch")
         migrated_registry = json.loads((managed_v1 / ".codex/team/thread-registry.json").read_text(encoding="utf-8"))

@@ -3,6 +3,7 @@
 ## 主任务
 
 - 默认 `control-plane-only`，不修改生产代码。
+- 只允许向 inspect 项目根目录内相对 owned paths 派发；另一 checkout/worktree 或根目录外目标必须停止。
 - 只消费 10 行内摘要和证据路径；高风险验收必须检查最终 diff、测试与 fresh reviewer 结论。
 - 只写受管调度状态，不伪造客户端 ID、运行态、证据或完成结论。
 

@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2.0.3
+# Multi-Agent Team Skill v2.0.4
 
 <div align="center">
   <strong>control-plane-only · fast lane · project lane · deterministic migration</strong><br>
@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-2.0.3-informational.svg" alt="Version" /></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-2.0.4-informational.svg" alt="Version" /></a>
   <a href="./scripts/"><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg" alt="Python" /></a>
 </p>
 
@@ -33,6 +33,8 @@ inspect-first 按 README 第一处有效 H1、可读项目 manifest、目录 bas
 - 在外部发布、生产写入和凭据变更前取得独立批准。
 
 普通执行进入 fast lane，复杂持续工作进入 project lane。planner 不再返回“主任务直接实现”。
+
+2.0.4 对这条边界增加失败关闭：安装、升级、审计和 doctor 会检查 `AGENTS.md` 受管块之外是否仍有“快速直改”“聚焦开发”“主任务自行实现”等冲突规则；存在冲突时不再以 marker 存在为由假通过。任务包同时禁止把写入目标切换到 inspect 根目录之外的另一 checkout/worktree。
 
 派发遵循 `dispatch-and-return`：成功 spawn 一个或一批 Agent 后，先批量完成 spawn，再一次性回传任务编号、角色、状态并结束当前 turn。同一派发 turn 禁止 `wait_agent`、重复状态轮询、长测试或继续集成；完成通知、health、验收和重派延后到用户 turn、完成事件 turn 或自动唤醒。用户新消息优先由新的调度轮处理，依赖队列和路径所有权避免后台冲突。同步等待必须由用户明确要求且先告知会阻塞输入。
 
@@ -58,7 +60,7 @@ python3 scripts/inspect_team.py --project <项目根目录>
 |---|---|
 | `new` | dry-run 初始化协作层 |
 | `existing-project` | 非侵入 dry-run，保留业务代码、配置和文档 |
-| `existing-team:v1` | 确定性迁移到 schema 2.0 / Skill 2.0.3 |
+| `existing-team:v1` | 确定性迁移到 schema 2.0 / Skill 2.0.4 |
 | `existing-team:v2-upgrade` | 事务升级受管规则、状态字段和模板 |
 | `existing-team:v2` | doctor + runtime health |
 | `existing-team:audit` | 未知或自定义团队只读审计，失败关闭 |
@@ -151,10 +153,19 @@ python3 scripts/runtime_smoke.py --project <path> \
   --explorer-evidence artifacts/explorer-smoke.log --apply
 python3 scripts/runtime_smoke.py --project <path> \
   --reviewer-evidence artifacts/reviewer-smoke.log --apply
+
+# 7. 客户端真实重命名和置顶成功后，持久化当前主控；默认 dry-run
+python3 scripts/bind_control_task.py --project <path> \
+  --thread-id <codex-thread-id> --host-id local --pinned
+python3 scripts/bind_control_task.py --project <path> \
+  --thread-id <codex-thread-id> --host-id local --pinned --apply
+
+# 8. 只有主控绑定和双角色 runtime smoke 都完成才通过完整完成闸
+python3 scripts/team_doctor.py --project <path> --strict
 ```
 
 `team_init.py` 与 `team_upgrade.py` 仅在 `--apply` 时写入；已有项目只修改受管协作文件并先备份。v2 的 `--thread-mode` 会同步 manifest 与 project-state，但不会放宽外部动作审批。模型档位变更遇到活动或可恢复实例时输出 `replacement_required` 并保持实例、模型和模板不变，只允许无活动实例或终态记录安全重配置。未知 schema、自定义角色漂移、符号链接逃逸、Git ignored 受管路径和冲突配置均失败关闭。
-`runtime_smoke.py` 只接受项目内已存在、非空、非 symlink 的证据：单侧 explorer/reviewer 证据为 `partial_done`，两侧证据齐全才是 `runtime_validation_done`；无法运行真实客户端时保持 `pending`，不得创建占位日志。
+`runtime_smoke.py` 只接受项目内已存在、非空、非 symlink 的证据：单侧 explorer/reviewer 证据为 `partial_done`，两侧证据齐全才是 `runtime_validation_done`；无法运行真实客户端时保持 `pending`，不得创建占位日志。`bind_control_task.py` 只在调用方确认客户端重命名和置顶成功后记录真实线程；缺少绑定、置顶或双角色证据时 `team_doctor.py --strict` 必须失败。
 
 ![已有团队安全升级](./assets/architecture/zh-CN/safe-existing-skill-upgrade.png)
 
@@ -222,7 +233,7 @@ bash scripts/verify_assets.sh
 
 深度验证覆盖 inspect、init、upgrade、doctor、health、orchestrator、新环境、已有环境、运行时故障、`PYTHONOPTIMIZE=1`、README 本地链接和视觉资产引用。官方 validator 若存在，再运行其 `quick_validate.py`。
 
-真实回归输出见 [v2 验证证据](./examples/regression-evidence-2026-07-18-v2.md)，评分口径见 [生产评分卡](./governance/PRODUCTION-SCORECARD.md)。
+真实回归输出见 [2.0.4 验证证据](./examples/regression-evidence-2026-07-19-v2.0.4.md)，评分口径见 [生产评分卡](./governance/PRODUCTION-SCORECARD.md)。
 
 ## 安全边界
 

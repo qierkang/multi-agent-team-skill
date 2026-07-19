@@ -2,15 +2,18 @@
 
 ## 支持路径
 
-- schema 1.0 受管团队 -> schema 2.0 / Skill 2.0.3。
-- schema 2.0 且 Skill 1.x -> Skill 2.0.3 patch migration。
-- 当前 2.0.3 -> `already_current`。
+- schema 1.0 受管团队 -> schema 2.0 / Skill 2.0.4。
+- schema 2.0 且 Skill 1.x -> Skill 2.0.4 patch migration。
+- 当前 2.0.4 -> `already_current`。
 - 未知 schema、非受管 manifest 或自定义受管角色 -> 只读审计，失败关闭。
 
-## 2.0.3 新增字段
+## 2.0.4 新增字段
 
 - `project-state.json.interaction_policy` 固定 dispatch 后立即 return，禁止同 turn wait、poll 与长验收。
 - `follow_up_processing` 只允许在后续用户 turn、完成事件、health、验收或重派唤醒处理。
+- 安装、升级、审计和 doctor 共用 AGENTS 非受管区冲突检测；发现主任务直改规则时失败关闭，不自动删除项目原规则。
+- 客户端真实重命名/置顶后用 `bind_control_task.py` 写入 `orchestration.control_task`；`team_doctor.py --strict` 要求有效绑定和双角色 smoke。
+- 写任务只能使用 inspect 根目录内相对路径，跨 checkout/worktree 目标必须停止。
 
 升级器会重建该策略；缺失或漂移会进入版本同步，不覆盖业务文件。真实客户端 turn 结束仍由主控遵守规则，Python 仅能验证配置和输出契约。
 

@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2.0.3 Start Here
+# Multi-Agent Team Skill v2.0.4 Start Here
 
 ## 用户入口
 
@@ -10,6 +10,7 @@
 4. 初始化或升级先 dry-run；只有用户明确要求落地时加 `--apply`。
 5. 未知团队先审计，禁止覆盖现有角色、配置、状态或业务文件。
 6. 每次 inspect、初始化、升级或最新版健康检查成功后，读取 `TITLE_SUGGESTED` 并调用 `codex_app__set_thread_title`；若客户端不可用，保留 `TITLE_RENAME=pending`，不把脚本输出当成客户端成功。
+7. 指定当前任务为主控时，客户端真实重命名和置顶后运行 `bind_control_task.py --apply`；声明完成前运行 `team_doctor.py --strict`。
 
 显示名确定性优先级：README 第一处有效 H1 -> `package.json` / `pyproject.toml` / `Cargo.toml` 可读名称 -> 项目目录 basename。清理 Markdown 符号和空白，自动限制长度，不要求用户手工命名。
 
@@ -24,11 +25,13 @@
 | 任务规划与队列 | `thread_orchestrator.py plan/enqueue/dispatch` |
 | 心跳、失败、替换 | `thread_orchestrator.py update/fail/replace/health` |
 | 客户端冒烟证据 | `runtime_smoke.py`（pending -> partial_done -> runtime_validation_done） |
+| 主控任务绑定 | `bind_control_task.py`（客户端成功后持久化 thread/host/title/pin） |
 | Skill 完整验证 | `health_check.py --deep` |
 
 ## 不变量
 
 - 主任务 `control-plane-only`，不写生产代码。
+- AGENTS 非受管区的快速直改/聚焦开发冲突失败关闭；写任务不得越出 inspect 根目录或切换到另一 checkout/worktree。
 - fast lane 一次性 Agent；project lane 的 one-shot 由主控制面代为派发；Codex `agents.max_depth=1`，registry 受管关系最多 depth 2。
 - 队列不限、总并发 6、写并发 2、所有权互斥。
 - 轻任务最小包 + on-failure review；高风险 fresh reviewer。

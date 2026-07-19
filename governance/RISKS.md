@@ -41,6 +41,11 @@
   - 模型映射集中在项目策略与角色目录；安装后必须做真实 explorer/reviewer 冒烟，不以静态校验代替。
   - 回归固定校验默认安装、自定义注入、恶意输入拒绝和 v2 重配置链路。
 
+### R-008：AGENTS 语义冲突检测无法理解所有自然语言改写
+
+- 风险：确定性规则能阻断已知“快速直改/聚焦开发/主任务自行实现”表述，但无法证明覆盖所有同义改写或祖先目录动态注入规则。
+- 应对：命中即失败关闭；未命中仍需 runtime smoke 和 fresh reviewer。后续用真实事故样本扩充规则，不把关键词检查宣称为绝对运行时隔离。
+
 ## Closed Risks
 
 | ID | 描述 | 修复 |
@@ -60,6 +65,9 @@
 | C-013 | 假、越界或 symlink evidence 通过完成闸 | audit、update、migration、doctor、health、runtime smoke 共用项目内真实非空普通文件校验 |
 | C-014 | v2 `--thread-mode controlled-auto` 被静默忽略 | 显式模式更新同步 manifest/project-state，doctor 一致性校验和 project dispatch 回归覆盖 |
 | C-015 | queued -> blocked -> active 绕过派发门禁 | blocked 恢复强制 instance/start/handoff、依赖、父任务、模式、domain、所有权与容量复验 |
+| C-016 | AGENTS 同时允许主任务直改且含 control-plane marker，doctor 仍假通过 | 共享非受管区冲突检测接入 init/upgrade/audit/doctor 并增加真实复现回归 |
+| C-017 | 项目标题看似主控，但 manifest 无线程绑定或 runtime smoke 仍 pending | 新增显式绑定命令与 strict doctor 完成闸 |
+| C-018 | worktree 主控直接写入另一 checkout | AGENTS 与完整/最小任务包固定 inspect 根目录相对路径和跨工作区停止条件 |
 
 ## v2 开放风险
 

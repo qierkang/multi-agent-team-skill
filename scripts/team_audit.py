@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agents_policy import conflict_messages
+
 from runtime_state import validate_evidence_path
 
 
@@ -280,6 +282,12 @@ def render_report(root: Path, threads: list[dict[str, Any]], snapshot_warnings: 
         warnings.append("未检测到 Git 工作树，无法验证未提交文件和 .gitignore")
     if not (root / "docs/协作/任务台账.md").is_file():
         warnings.append("缺少外置任务台账")
+    agents_path = root / "AGENTS.md"
+    if agents_path.is_file():
+        warnings.extend(
+            f"AGENTS control-plane 冲突：{item}"
+            for item in conflict_messages(agents_path.read_text(encoding="utf-8", errors="ignore"))
+        )
 
     ownership: dict[str, list[str]] = {}
     mapped: list[tuple[dict[str, Any], str, str, str]] = []

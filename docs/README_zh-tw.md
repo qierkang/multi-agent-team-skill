@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2.0.3
+# Multi-Agent Team Skill v2.0.4
 
 <p align="center">
   <a href="../README.md">简体中文</a> · <a href="./README_zh-tw.md">繁體中文</a> · <a href="./README_en.md">English</a>
@@ -6,7 +6,7 @@
 
 <p align="center"><img src="../assets/social-preview.png?v=2" alt="Multi-Agent Team Skill" width="100%" /></p>
 
-2.0.3 將主任務預設為唯一 `control-plane-only` 控制面，並加入硬性 `dispatch-and-return` 互動策略：成功 spawn 一個或一批 Agent 後立即 ACK 任務編號、角色與狀態並 return；同一 turn 不得 wait、輪詢、長測試或整合。
+2.0.4 將主任務預設為唯一 `control-plane-only` 控制面，檢測受管 AGENTS 區塊外的「快速直改／聚焦開發／主任務自行實作」衝突規則，並加入硬性 `dispatch-and-return` 互動策略。
 
 ## Inspect-first
 
@@ -23,7 +23,7 @@ python3 scripts/inspect_team.py --project <專案根目錄>
 | `new` | dry-run 初始化 |
 | `existing-project` | 非侵入 dry-run 安裝 |
 | `existing-team:v1` | 確定性遷移至 schema 2.0 |
-| `existing-team:v2-upgrade` | 事務升級受管 1.x 團隊至 2.0.3 |
+| `existing-team:v2-upgrade` | 事務升級受管 1.x 團隊至 2.0.4 |
 | `existing-team:v2` | doctor 與 runtime health |
 | `existing-team:audit` | 唯讀審計；未知 schema 失敗關閉 |
 
@@ -59,6 +59,8 @@ python3 scripts/team_doctor.py --project <path>
 python3 scripts/thread_orchestrator.py health --project <path>
 python3 scripts/runtime_smoke.py --project <path> --explorer-evidence artifacts/explorer-smoke.log --apply
 python3 scripts/runtime_smoke.py --project <path> --reviewer-evidence artifacts/reviewer-smoke.log --apply
+python3 scripts/bind_control_task.py --project <path> --thread-id <id> --host-id local --pinned --apply
+python3 scripts/team_doctor.py --project <path> --strict
 
 python3 scripts/thread_orchestrator.py plan --project <path> --task-json task.json
 python3 scripts/thread_orchestrator.py enqueue --project <path> --task-json task.json --task-id TASK-001 --apply
@@ -69,7 +71,7 @@ Codex 專案設定固定 `agents.max_depth=1`；registry depth 2 只是主任務
 
 受管 v2 團隊明確使用 `--thread-mode controlled-auto` 時，manifest 與 project-state 必須同步更新，但外部發布、生產寫入、付費動作與憑據變更仍需獨立批准。模型重配置遇到活動或可恢復實例時必須零寫入並輸出 `replacement_required`。所有完成與冒煙 evidence 必須是專案相對、無 `..`、存在、非空且非 symlink 的檔案；blocked 恢復還必須具備既有 dispatch metadata、真實 handoff，並重新通過依賴、所有權與容量門禁。
 
-初始化與升級預設 dry-run；只有明確要求落地才使用 `--apply`。既有專案保留業務程式碼、建置工具、技術棧、原有文件與無關設定。未知 schema、自訂受管角色漂移、符號連結逃逸、ignored 受管路徑和設定衝突都失敗關閉。
+初始化與升級預設 dry-run；只有明確要求落地才使用 `--apply`。既有專案保留業務程式碼、建置工具、技術棧、原有文件與無關設定。未知 schema、自訂受管角色漂移、符號連結逃逸、ignored 受管路徑、主任務直改衝突規則與跨 checkout/worktree 寫入都失敗關閉；strict 完成閘另要求真實置頂主控綁定和雙角色冒煙證據。
 
 ## 驗證
 
@@ -82,7 +84,7 @@ bash scripts/verify_assets.sh
 
 深度閘門涵蓋 inspect、init、upgrade、doctor、health、orchestrator、新／既有／runtime 回歸、最佳化 Python、README 連結與視覺資產。若本機存在官方 Skill validator，再執行其 `quick_validate.py`。
 
-- [v2 驗證證據](../examples/regression-evidence-2026-07-18-v2.md)
+- [2.0.4 驗證證據](../examples/regression-evidence-2026-07-19-v2.0.4.md)
 - [生產評分卡](../governance/PRODUCTION-SCORECARD.md)
 - [References 索引](../references/INDEX.md)
 - [CHANGELOG](../CHANGELOG.md)

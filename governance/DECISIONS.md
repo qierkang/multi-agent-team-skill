@@ -75,3 +75,11 @@ health 必须在 mutation 使用的同一 runtime lock 下读取 registry、owne
 ## DEC-0019：Goal 不属于控制面
 
 主控任务、主控线程、项目主控和当前对话设为项目主控均表示普通 Codex 对话控制面。`goal_policy=explicit-only` 且 `control_plane_is_goal=false`；project task/长期领域任务与 Codex Goal 明确分离。已有 Goal 的线程报告 `unsupported_for_control_plane_setup`，不复用或新建。
+
+## DEC-0020：控制面冲突检测失败关闭
+
+安装、升级、审计和 doctor 共用 `agents_policy.py` 检查 AGENTS 受管块之外的主任务直改规则。检测到快速直改、聚焦开发、主任务自行实现或仅显式启用多 Agent 等冲突时，不自动删除项目原规则，而是阻断并要求先明确治理口径。
+
+## DEC-0021：完整主控必须有真实绑定和双角色冒烟
+
+客户端负责真实重命名和置顶，成功后由 `bind_control_task.py` 持久化 thread/host/title/URI/pin；Python 不伪造客户端动作。普通 doctor 用于静态安装检查，`--strict` 是指定主控的完成闸，同时要求有效绑定与 explorer/fresh-reviewer runtime evidence。

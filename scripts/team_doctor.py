@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tomllib
@@ -29,6 +30,7 @@ from runtime_state import (
 )
 from team_init import apply_model_tiers
 from thread_orchestrator import derived_runtime_state, ownership_conflicts
+from agents_policy import conflict_messages
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +52,8 @@ ACTIVE_STATES = {"provisioning", "active", "waiting_input", "reviewing", "degrad
 ALL_STATES = ACTIVE_STATES | {"queued", "escalation_required", "completed", "blocked", "cancelled", "archived"}
 RUNTIME_SMOKE_STATES = {"pending", "partial_done", "runtime_validation_done"}
 RUNTIME_SMOKE_ROLES = ("explorer", "reviewer")
+CONTROL_THREAD_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{7,127}$")
+CONTROL_HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 def check(ok: bool, label: str, failures: list[str]) -> None:
@@ -82,6 +86,27 @@ def valid_smoke_evidence_path(root: Path, raw: str) -> bool:
         return validate_evidence_path(root, raw) == raw
     except (OSError, ValueError):
         return False
+
+
+def valid_control_task(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    thread_id = value.get("thread_id")
+    host_id = value.get("host_id")
+    title = value.get("title")
+    return (
+        isinstance(thread_id, str)
+        and bool(CONTROL_THREAD_ID_RE.fullmatch(thread_id))
+        and isinstance(host_id, str)
+        and bool(CONTROL_HOST_ID_RE.fullmatch(host_id))
+        and isinstance(title, str)
+        and title.startswith("主控｜")
+        and len(title) <= 160
+        and value.get("uri") == f"codex://threads/{thread_id}"
+        and value.get("pinned") is True
+        and isinstance(value.get("designated_at"), str)
+        and bool(value["designated_at"].strip())
+    )
 
 
 def git_root(root: Path) -> Path | None:
@@ -236,6 +261,13 @@ def validate_runtime(root: Path, failures: list[str]) -> list[Path]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="校验 multi-agent-team v2 安装与状态结构")
     parser.add_argument("--project", required=True)
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="完成闸：要求真实主控绑定和 explorer/reviewer runtime smoke 均完成",
+    )
+    parser.add_argument("--require-control-task", action="store_true")
+    parser.add_argument("--require-runtime-smoke", action="store_true")
     args = parser.parse_args()
     root = Path(args.project).expanduser().resolve()
     failures: list[str] = []
@@ -266,6 +298,14 @@ def main() -> int:
     check(orchestration.get("goal_policy") == "explicit-only", "manifest Goal policy is explicit-only", failures)
     check(orchestration.get("control_plane") == "control-plane-only", "main task is control-plane-only", failures)
     check(orchestration.get("lanes") == ["fast", "project"], "manifest declares fast/project lanes", failures)
+    control_task = orchestration.get("control_task")
+    check(
+        control_task is None or valid_control_task(control_task),
+        "manifest control task binding is valid when present",
+        failures,
+    )
+    if args.strict or args.require_control_task:
+        check(valid_control_task(control_task), "required control task is bound and pinned", failures)
     smoke_status = manifest.get("runtime_smoke_test", "pending")
     raw_smoke_evidence = manifest.get(
         "runtime_smoke_evidence", {role: [] for role in RUNTIME_SMOKE_ROLES}
@@ -302,6 +342,12 @@ def main() -> int:
         "runtime smoke evidence files exist and are non-empty",
         failures,
     )
+    if args.strict or args.require_runtime_smoke:
+        check(
+            smoke_status == "runtime_validation_done",
+            "required explorer/reviewer runtime smoke is complete",
+            failures,
+        )
 
     features = config.get("features", {})
     agents = config.get("agents", {})
@@ -345,6 +391,10 @@ def main() -> int:
 
     agents_text = agents_path.read_text(encoding="utf-8", errors="ignore")
     check(AGENTS_START in agents_text and AGENTS_END in agents_text, "AGENTS collaboration marker", failures)
+    agents_conflicts = conflict_messages(agents_text)
+    for conflict in agents_conflicts:
+        print(f"FAIL AGENTS control-plane conflict: {conflict}")
+    check(not agents_conflicts, "AGENTS has no control-plane contradictions outside managed block", failures)
     for relative in REQUIRED_DOCS:
         path = root / relative
         check(path.is_file() and path.stat().st_size > 0, f"{relative} exists and is non-empty", failures)

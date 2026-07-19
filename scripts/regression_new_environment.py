@@ -80,7 +80,7 @@ def main() -> int:
         require(manifest["skill"] == "multi-agent-team", "manifest skill mismatch")
         require(manifest["profile"] == "full", "manifest profile mismatch")
         require(manifest["schema_version"] == "2.0", "manifest schema mismatch")
-        require(manifest["skill_version"] == "2.0.3", "manifest skill version mismatch")
+        require(manifest["skill_version"] == "2.0.4", "manifest skill version mismatch")
         require(manifest["orchestration"]["control_plane"] == "control-plane-only", "control-plane mode mismatch")
         require(manifest["orchestration"]["lanes"] == ["fast", "project"], "lane manifest mismatch")
         require(manifest["orchestration"]["thread_creation_mode"] == "controlled-auto", "thread mode mismatch")

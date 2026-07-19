@@ -16,7 +16,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "2.0"
-SKILL_VERSION = "2.0.3"
+SKILL_VERSION = "2.0.4"
 TEAM_DIR = Path(".codex/team")
 PROJECT_STATE = TEAM_DIR / "project-state.json"
 THREAD_REGISTRY = TEAM_DIR / "thread-registry.json"

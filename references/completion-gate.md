@@ -3,16 +3,17 @@
 ## 初始化/升级
 
 - inspect 路由与实际动作一致，默认 dry-run 证据存在。
-- manifest 与 project-state 为 Skill 2.0.3，control plane 为 `control-plane-only`。
+- manifest 与 project-state 为 Skill 2.0.4，control plane 为 `control-plane-only`。
 - `interaction_policy` 固定 `dispatch_return_immediately=true`、`wait_same_turn=false`；派发 turn 不得 wait/poll/长测试/继续集成，且 ACK 后 return。
 - fast/project lane、无限队列、总并发 6、写并发 2 已声明；Codex `agents.max_depth=1`，registry 受管关系最多 depth 2。
 - 角色、AGENTS 受管块、完整/最小派发包、台账、快照和 `.codex/team/*` 存在。
+- AGENTS 受管块外不存在“快速直改、聚焦开发、主任务自行实现”等 control-plane 冲突规则。
 - 受管文件无 symlink、可追踪、schema 可解析，registry 与派生状态一致。
 - v1/v2-upgrade 保留业务文件、线程 ID、状态和证据，且有备份。
 
 ## 运行态
 
-- `team_doctor.py` 成功。
+- 指定项目主控后，客户端真实重命名/置顶成功并由 `bind_control_task.py --apply` 持久化；`team_doctor.py --strict` 成功。
 - `thread_orchestrator.py health` 成功；degraded 必须明确报告。
 - manifest 冒烟状态只能是 `pending / partial_done / runtime_validation_done`；后两者必须由 `runtime_smoke.py` 记录真实、存在且非空的 explorer/reviewer 证据，证据不全不得标 done。
 - 目标项目自身构建/测试已运行或明确说明无法运行。

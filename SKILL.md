@@ -2,9 +2,9 @@
 name: multi-agent-team
 description: 用户要求用 multi-agent-team-skill 初始化、升级、检查项目，或需要受控多 Agent 并行、长期领域任务、队列、心跳、Token 与失败恢复时触发。普通单文件修改和纯咨询不触发。
 metadata:
-  version: "2.0.3"
+  version: "2.0.4"
 ---
-# Multi-Agent Team v2.0.3
+# Multi-Agent Team v2.0.4
 主任务默认是唯一 `control-plane-only` 控制面：只做只读判断、拆分、派发、监控、验收、汇报和受管调度状态写入，不写生产代码。
 用户给出项目路径后，无需询问 orchestrator 等内部术语，必须先执行：
 ```bash
@@ -17,9 +17,9 @@ inspect-first 同时按 README 第一处有效 H1、可读 project/package manif
 | `new` / `existing-project` | 读对应 workflow，dry-run `team_init.py` |
 | `existing-team:v1` / `v2-upgrade` | 读 `schema-migration.md`，dry-run `team_upgrade.py` |
 | `existing-team:audit` | 运行只读 `team_audit.py`，未知 schema 失败关闭 |
-| `existing-team:v2` | 运行 `team_doctor.py` 与 orchestrator `health`，随后仍执行主控自动重命名 |
+| `existing-team:v2` | 运行 `team_doctor.py` 与 orchestrator `health`；AGENTS 非受管区冲突必须失败关闭 |
 
-用户明确要求“升级并开启受控自动”时，Skill 可为受管 v2 团队选择 `team_upgrade.py --thread-mode controlled-auto`；这不替代任何外部动作审批。
+用户明确要求“升级并开启受控自动”时，可用 `team_upgrade.py --thread-mode controlled-auto`；指定当前主控后，客户端真实重命名/置顶成功，再用 `bind_control_task.py` 持久化绑定。
 ## Goal 隔离（硬约束）
 “主控任务/主控线程/项目主控/当前对话设为项目主控”均是普通 Codex 对话控制面，绝不等价于 Goal；project state 固定 `goal_policy=explicit-only`、`control_plane_is_goal=false`，默认 `controlled-auto`。除非用户明确要求创建 Goal、使用目标模式或设置目标预算，否则不调用 Goal、goal-writer 或 `/goal`。初始化/升级措辞即无冲突 dry-run 后 apply 授权，无需二次确认。
 
@@ -47,4 +47,4 @@ inspect-first 同时按 README 第一处有效 H1、可读 project/package manif
 - 外部发布、生产写入、付费动作和凭据变更始终单独取得明确批准。
 
 ## 完成闸
-执行 `team_doctor.py`、`thread_orchestrator.py health`、项目测试和高风险 fresh reviewer；用 `runtime_smoke.py` 记录真实客户端证据，无法运行时保持 pending/partial。修改 Skill 后运行 `python3 scripts/health_check.py --deep`、官方 validator（若存在）及 `python3 scripts/check_readme_links.py`。
+声明主控就绪前执行 `team_doctor.py --strict`、orchestrator health、项目测试和高风险 fresh reviewer；`runtime_smoke.py` 只记录真实证据，无法运行时保持 pending/partial。修改 Skill 后运行 deep health、官方 validator（若存在）及 README 链接检查。

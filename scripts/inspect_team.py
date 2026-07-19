@@ -140,7 +140,7 @@ def inspect(root: Path) -> dict[str, Any]:
             installed_skill_version = str(manifest_payload.get("skill_version", "unknown"))
             if installed_skill_version != SKILL_VERSION:
                 route_detail = "existing-team:v2-upgrade"
-                next_action = "先 dry-run team_upgrade.py，确定迁移受管协作文件到 Skill 2.0.3"
+                next_action = "先 dry-run team_upgrade.py，确定迁移受管协作文件到 Skill 2.0.4"
             else:
                 route_detail = "existing-team:v2"
                 next_action = "运行 team_doctor.py 和 thread_orchestrator.py health；健康检查后自动重命名主控任务"

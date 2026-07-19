@@ -1,4 +1,4 @@
-# Multi-Agent Team Skill v2.0.3
+# Multi-Agent Team Skill v2.0.4
 
 <p align="center">
   <a href="../README.md">简体中文</a> · <a href="./README_zh-tw.md">繁體中文</a> · <a href="./README_en.md">English</a>
@@ -6,7 +6,7 @@
 
 <p align="center"><img src="../assets/social-preview.png?v=2" alt="Multi-Agent Team Skill" width="100%" /></p>
 
-Version 2.0.3 makes the main task a `control-plane-only` coordinator and adds a hard `dispatch-and-return` interaction policy. After one or more Agents are spawned, the main task ACKs IDs, roles, and status and returns immediately; it does not wait, poll, test, or integrate in the same turn.
+Version 2.0.4 makes the main task a `control-plane-only` coordinator, detects contradictory direct-implementation rules outside the managed AGENTS block, and adds a hard `dispatch-and-return` interaction policy. After one or more Agents are spawned, the main task ACKs IDs, roles, and status and returns immediately; it does not wait, poll, test, or integrate in the same turn.
 
 ![Two-lane orchestration](../assets/architecture/en/team-orchestration-overview.png)
 
@@ -25,7 +25,7 @@ python3 scripts/inspect_team.py --project <project-root>
 | `new` | dry-run initialization |
 | `existing-project` | non-invasive dry-run installation |
 | `existing-team:v1` | deterministic schema-1 to schema-2 migration |
-| `existing-team:v2-upgrade` | transactional managed 1.x to 2.0.3 upgrade |
+| `existing-team:v2-upgrade` | transactional managed 1.x to 2.0.4 upgrade |
 | `existing-team:v2` | doctor and runtime health |
 | `existing-team:audit` | read-only audit; unknown schemas fail closed |
 
@@ -74,6 +74,8 @@ python3 scripts/team_doctor.py --project <path>
 python3 scripts/thread_orchestrator.py health --project <path>
 python3 scripts/runtime_smoke.py --project <path> --explorer-evidence artifacts/explorer-smoke.log --apply
 python3 scripts/runtime_smoke.py --project <path> --reviewer-evidence artifacts/reviewer-smoke.log --apply
+python3 scripts/bind_control_task.py --project <path> --thread-id <id> --host-id local --pinned --apply
+python3 scripts/team_doctor.py --project <path> --strict
 
 # Plan, queue, and bind a client instance
 python3 scripts/thread_orchestrator.py plan --project <path> --task-json task.json
@@ -89,7 +91,7 @@ See the [runtime contract](../references/runtime-orchestration.md), [migration r
 
 ## Safe installation and migration
 
-New projects receive managed role, policy, ledger, and runtime files. Existing projects keep business files, build tools, technology choices, existing docs, and unrelated configuration. Managed changes are backed up and transactionally written. Unknown schemas, customized managed roles, symlink escapes, ignored managed paths, and configuration conflicts fail closed.
+New projects receive managed role, policy, ledger, and runtime files. Existing projects keep business files, build tools, technology choices, existing docs, and unrelated configuration. Managed changes are backed up and transactionally written. Unknown schemas, customized managed roles, symlink escapes, ignored managed paths, contradictory direct-implementation rules, cross-checkout write targets, and configuration conflicts fail closed. Strict readiness additionally requires a real pinned control-task binding and explorer/reviewer smoke evidence.
 
 ![Safe existing-team upgrade](../assets/architecture/en/safe-existing-skill-upgrade.png)
 
@@ -104,7 +106,7 @@ bash scripts/verify_assets.sh
 
 The deep gate covers inspect, init, upgrade, doctor, health, orchestration, new/existing/runtime regressions, optimized Python execution, README links, and registered visual references. If an official Skill validator is installed, run its `quick_validate.py` as an additional gate.
 
-- [v2 regression evidence](../examples/regression-evidence-2026-07-18-v2.md)
+- [2.0.4 regression evidence](../examples/regression-evidence-2026-07-19-v2.0.4.md)
 - [production scorecard](../governance/PRODUCTION-SCORECARD.md)
 - [changelog](../CHANGELOG.md)
 - [security](../SECURITY.md)

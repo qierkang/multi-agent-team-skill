@@ -11,10 +11,11 @@ bash scripts/verify_assets.sh
 
 检查项：
 
-- SKILL 2.0.3、约 40 行入口和 inspect-first 路由；
+- SKILL 2.0.4、约 40 行入口和 inspect-first 路由；
 - dispatch-and-return、`interaction_policy` 与 same-turn wait/poll/长验收禁止；Python 不伪造客户端 UI 并发证据；
 - 标题回归覆盖新目录、已有项目、已有团队、README H1 与 manifest/目录 fallback；客户端动作保持 pending 诚实状态；
 - control-plane-only、fast/project、无限队列、总并发 6、写并发 2；
+- AGENTS 非受管区冲突失败关闭、主控真实绑定、strict runtime smoke 与跨 checkout/worktree 写入阻断；
 - 角色、模型、模板、assets/templates 分离和零本机绝对路径；
 - init、upgrade、doctor、health、runtime_smoke、orchestrator 与新/旧/runtime 回归；
 - 旧 evidence 兼容、health 并发一致快照、冒烟状态迁移、依赖、层级、所有权、心跳、超时、同因失败和新实例升级；

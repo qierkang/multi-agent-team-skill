@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2.0.4 - 2026-07-19
+
+- 修复 AGENTS 受管块外仍允许“快速直改/聚焦开发/主任务自行实现”时 doctor 假通过；init、upgrade、audit、doctor 统一失败关闭检测。
+- 新增 `bind_control_task.py` 与 `team_doctor.py --strict`：指定主控只有真实 thread/host/title/pin 绑定和 explorer/reviewer smoke 齐全才算完成。
+- 完整/最小派发包和控制面契约禁止写入 inspect 根目录之外的另一 checkout/worktree。
+- 新增 control-plane policy 回归，覆盖冲突安装阻断、升级拒绝、audit 报告、strict 门禁、dry-run 绑定和伪 pin 拒绝。
+
 ## 2.0.3 - 2026-07-18
 
 - 修复 Goal 抢占：普通 Codex 对话控制面不创建或复用 Goal；初始化/升级无冲突时 dry-run 后直接 apply。
